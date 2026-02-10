@@ -21,15 +21,15 @@ df = charger_donnees()
 st.markdown("### Navigation")
 col1, col2 = st.columns(2)
 with col1:
+    if st.button("📊 Matchs", use_container_width=True, type="primary"):
+        st.session_state.page = "analyse"
+with col2:
     if st.button("📋 Consultation Data_matchs", use_container_width=True):
         st.session_state.page = "consultation"
-with col2:
-    if st.button("📊 Analyse Escrimeur", use_container_width=True):
-        st.session_state.page = "analyse"
 
 # Initialiser la page par défaut
 if 'page' not in st.session_state:
-    st.session_state.page = "consultation"
+    st.session_state.page = "analyse"
 
 st.markdown("---")
 
@@ -165,7 +165,7 @@ if st.session_state.page == "consultation":
 
 # ===== PAGE 2: ANALYSE ESCRIMEUR =====
 else:
-    st.title("📊 Analyse Escrimeur")
+    st.title("📊 Matchs")
     
     # Récupérer tous les tireurs et les trier par ordre alphabétique
     tireurs_liste = sorted(set(df['Tireur 1'].unique()) | set(df['Tireur 2'].unique()))
@@ -308,6 +308,7 @@ else:
                 'touches_marquees_victoire': touches_marquees_victoire,
                 'touches_recues_victoire': touches_recues_victoire,
                 'touches_marquees_defaite': touches_marquees_defaite,
+                'rang_total': 0,
                 'rang_pct': 0,
                 'rang_tm': 0,
                 'rang_tr': 0,
@@ -315,6 +316,10 @@ else:
                 'rang_tmd': 0,
                 'total_tireurs': 0
             }
+        
+        # Rang nombre de matchs (décroissant)
+        df_stats = df_stats.sort_values('total', ascending=False).reset_index(drop=True)
+        df_stats['rang_total'] = range(1, len(df_stats) + 1)
         
         # Rang % victoires (décroissant)
         df_stats = df_stats.sort_values('pct_victoires', ascending=False).reset_index(drop=True)
@@ -328,8 +333,8 @@ else:
         df_stats = df_stats.sort_values('touches_recues_moy', ascending=True).reset_index(drop=True)
         df_stats['rang_tr'] = range(1, len(df_stats) + 1)
         
-        # Rang touches reçues en victoire (croissant)
-        df_stats = df_stats.sort_values('touches_recues_victoire', ascending=True).reset_index(drop=True)
+        # Rang touches reçues en victoire (INVERSE : décroissant = moins bien)
+        df_stats = df_stats.sort_values('touches_recues_victoire', ascending=False).reset_index(drop=True)
         df_stats['rang_trv'] = range(1, len(df_stats) + 1)
         
         # Rang touches marquées en défaite (décroissant)
@@ -350,6 +355,7 @@ else:
             'touches_marquees_victoire': touches_marquees_victoire,
             'touches_recues_victoire': touches_recues_victoire,
             'touches_marquees_defaite': touches_marquees_defaite,
+            'rang_total': int(rang_tireur['rang_total']) if rang_tireur is not None else 0,
             'rang_pct': int(rang_tireur['rang_pct']) if rang_tireur is not None else 0,
             'rang_tm': int(rang_tireur['rang_tm']) if rang_tireur is not None else 0,
             'rang_tr': int(rang_tireur['rang_tr']) if rang_tireur is not None else 0,
@@ -372,6 +378,7 @@ else:
         # Conteneur avec bordure pour poules
         with st.container(border=True):
             st.markdown("#### Matchs de Poule")
+            st.markdown("")  # Petite marge
             if stats_poules and stats_poules['total'] > 0:
                 fig_poules = go.Figure(data=[go.Pie(
                     labels=['Victoires', 'Défaites'],
@@ -384,14 +391,17 @@ else:
                 
                 fig_poules.update_layout(
                     showlegend=True,
-                    height=400
+                    height=350,
+                    margin=dict(t=20, b=20, l=20, r=20)
                 )
                 
                 st.plotly_chart(fig_poules, use_container_width=True)
                 
+                st.markdown("")  # Petite marge
+                
                 # Statistiques poules
                 st.markdown("**Statistiques Poules :**")
-                st.write(f"• Nombre de matchs tirés : **{stats_poules['total']}**")
+                st.write(f"• Nombre de matchs tirés : **{stats_poules['total']}** (rang {stats_poules['rang_total']}/{stats_poules['total_tireurs']})")
                 st.write(f"• % de victoires : **{stats_poules['pct_victoires']:.1f}%** (rang {stats_poules['rang_pct']}/{stats_poules['total_tireurs']})")
                 st.write(f"• Touches marquées en moyenne par match : **{stats_poules['touches_marquees_moy']:.2f}** (rang {stats_poules['rang_tm']}/{stats_poules['total_tireurs']})")
                 st.write(f"• Touches reçues en moyenne par match : **{stats_poules['touches_recues_moy']:.2f}** (rang {stats_poules['rang_tr']}/{stats_poules['total_tireurs']})")
@@ -404,6 +414,7 @@ else:
         # Conteneur avec bordure pour tableaux
         with st.container(border=True):
             st.markdown("#### Matchs de Tableau")
+            st.markdown("")  # Petite marge
             if stats_tableaux and stats_tableaux['total'] > 0:
                 fig_tableaux = go.Figure(data=[go.Pie(
                     labels=['Victoires', 'Défaites'],
@@ -416,14 +427,17 @@ else:
                 
                 fig_tableaux.update_layout(
                     showlegend=True,
-                    height=400
+                    height=350,
+                    margin=dict(t=20, b=20, l=20, r=20)
                 )
                 
                 st.plotly_chart(fig_tableaux, use_container_width=True)
                 
+                st.markdown("")  # Petite marge
+                
                 # Statistiques tableaux
                 st.markdown("**Statistiques Tableaux :**")
-                st.write(f"• Nombre de matchs tirés : **{stats_tableaux['total']}**")
+                st.write(f"• Nombre de matchs tirés : **{stats_tableaux['total']}** (rang {stats_tableaux['rang_total']}/{stats_tableaux['total_tireurs']})")
                 st.write(f"• % de victoires : **{stats_tableaux['pct_victoires']:.1f}%** (rang {stats_tableaux['rang_pct']}/{stats_tableaux['total_tireurs']})")
                 st.write(f"• Touches marquées en moyenne par match : **{stats_tableaux['touches_marquees_moy']:.2f}** (rang {stats_tableaux['rang_tm']}/{stats_tableaux['total_tireurs']})")
                 st.write(f"• Touches reçues en moyenne par match : **{stats_tableaux['touches_recues_moy']:.2f}** (rang {stats_tableaux['rang_tr']}/{stats_tableaux['total_tireurs']})")
@@ -436,15 +450,16 @@ else:
     
     with st.container(border=True):
         st.subheader("Historique des matchs")
+        st.markdown("")  # Petite marge
         
         if len(df_escrimeur) > 0:
-            # Trier par date
-            df_histo = df_escrimeur.sort_values('Date').copy()
+            # Garder l'ordre de la base de données (pas de tri par date)
+            df_histo = df_escrimeur.copy()
             
-            # Calculer l'ordonnée pour chaque match
+            # Calculer l'ordonnée pour chaque match - UTILISER LA COLONNE VAINQUEUR
             def calculer_ordonnee(row):
                 est_poule = row['Poule / Tableau'].startswith('Poule') if pd.notna(row['Poule / Tableau']) else False
-                est_victoire = row['Touches Marquées'] > row['Touches Reçues']  # CORRECTION
+                est_victoire = row['Vainqueur'] == escrimeur  # CORRECTION: Utiliser Vainqueur
                 
                 if est_poule:
                     return 1 if est_victoire else -1
@@ -504,6 +519,7 @@ else:
         
         with col1:
             st.subheader("Évolution du % de victoires par saison")
+            st.markdown("")  # Petite marge
             
             if len(df_escrimeur) > 0:
                 # Calculer les stats par saison pour les poules
@@ -580,6 +596,7 @@ else:
         
         with col2:
             st.subheader("Nombre de victoires par saison")
+            st.markdown("")  # Petite marge
             
             if len(df_escrimeur) > 0:
                 # Obtenir toutes les saisons de la plage, sauf 2021
@@ -659,7 +676,7 @@ else:
                 # Créer le tableau d'affichage
                 tableau_poules = []
                 for _, row in df_derniers_poules.iterrows():
-                    victoire = row['Touches Marquées'] > row['Touches Reçues']
+                    victoire = row['Vainqueur'] == escrimeur  # CORRECTION: Utiliser Vainqueur
                     adversaire = row['Tireur 2'] if row['Tireur 1'] == escrimeur else row['Tireur 1']
                     
                     tableau_poules.append({
@@ -667,7 +684,6 @@ else:
                         'V/D': 'V' if victoire else 'D',
                         'Date': row['Date'].strftime('%d/%m/%y'),
                         'Compétition': row['Compétition'],
-                        'Escrimeur': escrimeur,
                         'Score': f"{int(row['Touches Marquées'])} - {int(row['Touches Reçues'])}",
                         'Adversaire': adversaire,
                         '_victoire': victoire  # Colonne cachée pour le style
@@ -682,14 +698,11 @@ else:
                     else:
                         return ['color: red'] * len(row)
                 
-                # Supprimer la colonne cachée avant affichage
-                df_affichage_poules_final = df_affichage_poules.drop(columns=['_victoire'])
-                
                 # Appliquer le style
                 df_styled = df_affichage_poules.style.apply(colorier_ligne, axis=1)
                 df_styled = df_styled.hide(axis='columns', subset=['_victoire'])
                 
-                st.dataframe(df_styled, use_container_width=True, hide_index=True)
+                st.dataframe(df_styled, use_container_width=True, hide_index=True, height=600)
             else:
                 st.info("Aucun match de poule pour cet escrimeur.")
     
@@ -701,18 +714,28 @@ else:
                 # Prendre les 15 derniers matchs de tableau
                 df_derniers_tableaux = df_tableaux.sort_values('Date', ascending=False).head(15).copy()
                 
+                # Dictionnaire de transformation pour Tour
+                transformation_tour = {
+                    "Tableau de 32": "1/16e",
+                    "Tableau de 16": "1/8e",
+                    "Quart de finale": "1/4",
+                    "Demi finale": "1/2",
+                    "Finale": "F"
+                }
+                
                 # Créer le tableau d'affichage
                 tableau_tableaux = []
                 for _, row in df_derniers_tableaux.iterrows():
-                    victoire = row['Touches Marquées'] > row['Touches Reçues']
+                    victoire = row['Vainqueur'] == escrimeur  # CORRECTION: Utiliser Vainqueur
                     adversaire = row['Tireur 2'] if row['Tireur 1'] == escrimeur else row['Tireur 1']
+                    tour = transformation_tour.get(row['Poule / Tableau'], row['Poule / Tableau'])
                     
                     tableau_tableaux.append({
                         'Saison': int(row['Saison']),
                         'V/D': 'V' if victoire else 'D',
                         'Date': row['Date'].strftime('%d/%m/%y'),
                         'Compétition': row['Compétition'],
-                        'Escrimeur': escrimeur,
+                        'Tour': tour,
                         'Score': f"{int(row['Touches Marquées'])} - {int(row['Touches Reçues'])}",
                         'Adversaire': adversaire,
                         '_victoire': victoire  # Colonne cachée pour le style
@@ -731,6 +754,6 @@ else:
                 df_styled_tableaux = df_affichage_tableaux.style.apply(colorier_ligne_tableau, axis=1)
                 df_styled_tableaux = df_styled_tableaux.hide(axis='columns', subset=['_victoire'])
                 
-                st.dataframe(df_styled_tableaux, use_container_width=True, hide_index=True)
+                st.dataframe(df_styled_tableaux, use_container_width=True, hide_index=True, height=600)
             else:
                 st.info("Aucun match de tableau pour cet escrimeur.")
