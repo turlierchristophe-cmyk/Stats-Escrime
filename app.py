@@ -1,11 +1,6 @@
 import streamlit as st
 import pandas as pd
-
-try:
-    import plotly.graph_objects as go
-except ImportError:
-    st.error("Plotly n'est pas installé. Installez-le avec: pip install plotly")
-    st.stop()
+import plotly.graph_objects as go
 
 # Configuration de la page
 st.set_page_config(
@@ -182,19 +177,19 @@ else:
         escrimeur = st.selectbox("Sélectionner un escrimeur", tireurs_liste)
     
     with col2:
-        # Filtre années
-        annees = sorted(df['Date'].dt.year.unique())
-        annee_min, annee_max = st.select_slider(
-            "Plage d'années",
-            options=annees,
-            value=(min(annees), max(annees))
+        # Filtre saisons (au lieu d'années)
+        saisons = sorted([s for s in df['Saison'].unique() if s != 2021])  # Exclure 2021
+        saison_min, saison_max = st.select_slider(
+            "Plage de saisons",
+            options=saisons,
+            value=(min(saisons), max(saisons))
         )
     
-    # Filtrer les données pour l'escrimeur sélectionné et la plage d'années
+    # Filtrer les données pour l'escrimeur sélectionné et la plage de saisons
     df_escrimeur = df[
         ((df['Tireur 1'] == escrimeur) | (df['Tireur 2'] == escrimeur)) &
-        (df['Date'].dt.year >= annee_min) &
-        (df['Date'].dt.year <= annee_max)
+        (df['Saison'] >= saison_min) &
+        (df['Saison'] <= saison_max)
     ].copy()
     
     # Fonction pour obtenir score et touches de l'escrimeur
@@ -247,8 +242,8 @@ else:
             # Filtrer pour ce tireur
             df_tireur_comp = df[
                 ((df['Tireur 1'] == tireur_comp) | (df['Tireur 2'] == tireur_comp)) &
-                (df['Date'].dt.year >= annee_min) &
-                (df['Date'].dt.year <= annee_max)
+                (df['Saison'] >= saison_min) &
+                (df['Saison'] <= saison_max)
             ].copy()
             
             if len(df_tireur_comp) == 0:
@@ -515,7 +510,8 @@ else:
                 stats_saison_poules = []
                 stats_saison_tableaux = []
                 
-                saisons_liste = sorted(df_escrimeur['Saison'].unique())
+                # Obtenir toutes les saisons disponibles dans la plage, sauf 2021
+                saisons_liste = sorted([s for s in df_escrimeur['Saison'].unique() if s != 2021])
                 
                 for saison in saisons_liste:
                     # Poules
@@ -523,14 +519,14 @@ else:
                     if len(df_saison_poules) > 0:
                         victoires_poules = len(df_saison_poules[df_saison_poules['Touches Marquées'] > df_saison_poules['Touches Reçues']])
                         pct_poules = (victoires_poules / len(df_saison_poules) * 100)
-                        stats_saison_poules.append({'Saison': saison, '% Victoires': pct_poules})
+                        stats_saison_poules.append({'Saison': int(saison), '% Victoires': pct_poules})
                     
                     # Tableaux
                     df_saison_tableaux = df_tableaux[df_tableaux['Saison'] == saison]
                     if len(df_saison_tableaux) > 0:
                         victoires_tableaux = len(df_saison_tableaux[df_saison_tableaux['Touches Marquées'] > df_saison_tableaux['Touches Reçues']])
                         pct_tableaux = (victoires_tableaux / len(df_saison_tableaux) * 100)
-                        stats_saison_tableaux.append({'Saison': saison, '% Victoires': pct_tableaux})
+                        stats_saison_tableaux.append({'Saison': int(saison), '% Victoires': pct_tableaux})
                 
                 # Créer le graphique
                 fig_evolution = go.Figure()
@@ -571,7 +567,11 @@ else:
                         xanchor="right",
                         x=1
                     ),
-                    yaxis=dict(range=[0, 100])
+                    yaxis=dict(range=[0, 100]),
+                    xaxis=dict(
+                        dtick=1,  # Forcer l'affichage par pas de 1
+                        tickmode='linear'
+                    )
                 )
                 
                 st.plotly_chart(fig_evolution, use_container_width=True)
@@ -582,43 +582,43 @@ else:
             st.subheader("Nombre de victoires par saison")
             
             if len(df_escrimeur) > 0:
-                # Calculer le nombre de victoires par saison
-                victoires_saison_poules = []
-                victoires_saison_tableaux = []
+                # Obtenir toutes les saisons de la plage, sauf 2021
+                saisons_liste = sorted([s for s in df_escrimeur['Saison'].unique() if s != 2021])
                 
-                saisons_liste = sorted(df_escrimeur['Saison'].unique())
+                # Créer les listes pour le graphique
+                saisons_graph = []
+                victoires_poules_graph = []
+                victoires_tableaux_graph = []
                 
                 for saison in saisons_liste:
+                    saisons_graph.append(int(saison))
+                    
                     # Poules
                     df_saison_poules = df_poules[df_poules['Saison'] == saison]
                     nb_vict_poules = len(df_saison_poules[df_saison_poules['Touches Marquées'] > df_saison_poules['Touches Reçues']])
-                    victoires_saison_poules.append({'Saison': saison, 'Victoires': nb_vict_poules})
+                    victoires_poules_graph.append(nb_vict_poules)
                     
                     # Tableaux
                     df_saison_tableaux = df_tableaux[df_tableaux['Saison'] == saison]
                     nb_vict_tableaux = len(df_saison_tableaux[df_saison_tableaux['Touches Marquées'] > df_saison_tableaux['Touches Reçues']])
-                    victoires_saison_tableaux.append({'Saison': saison, 'Victoires': nb_vict_tableaux})
+                    victoires_tableaux_graph.append(nb_vict_tableaux)
                 
                 # Créer l'histogramme
                 fig_victoires = go.Figure()
                 
-                if len(victoires_saison_poules) > 0:
-                    df_vict_poules = pd.DataFrame(victoires_saison_poules)
-                    fig_victoires.add_trace(go.Bar(
-                        x=df_vict_poules['Saison'],
-                        y=df_vict_poules['Victoires'],
-                        name='Poules',
-                        marker_color='#3498db'
-                    ))
+                fig_victoires.add_trace(go.Bar(
+                    x=saisons_graph,
+                    y=victoires_poules_graph,
+                    name='Poules',
+                    marker_color='#3498db'
+                ))
                 
-                if len(victoires_saison_tableaux) > 0:
-                    df_vict_tableaux = pd.DataFrame(victoires_saison_tableaux)
-                    fig_victoires.add_trace(go.Bar(
-                        x=df_vict_tableaux['Saison'],
-                        y=df_vict_tableaux['Victoires'],
-                        name='Tableaux',
-                        marker_color='#e74c3c'
-                    ))
+                fig_victoires.add_trace(go.Bar(
+                    x=saisons_graph,
+                    y=victoires_tableaux_graph,
+                    name='Tableaux',
+                    marker_color='#e74c3c'
+                ))
                 
                 fig_victoires.update_layout(
                     xaxis_title="Saison",
@@ -632,9 +632,105 @@ else:
                         xanchor="right",
                         x=1
                     ),
-                    barmode='group'
+                    barmode='group',
+                    xaxis=dict(
+                        dtick=1,
+                        tickmode='linear'
+                    )
                 )
                 
                 st.plotly_chart(fig_victoires, use_container_width=True)
             else:
                 st.info("Aucune donnée pour cet escrimeur sur cette période.")
+    
+    # Tableaux des derniers matchs
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        with st.container(border=True):
+            st.subheader("15 derniers matchs de Poule")
+            
+            if len(df_poules) > 0:
+                # Prendre les 15 derniers matchs de poule
+                df_derniers_poules = df_poules.sort_values('Date', ascending=False).head(15).copy()
+                
+                # Créer le tableau d'affichage
+                tableau_poules = []
+                for _, row in df_derniers_poules.iterrows():
+                    victoire = row['Touches Marquées'] > row['Touches Reçues']
+                    adversaire = row['Tireur 2'] if row['Tireur 1'] == escrimeur else row['Tireur 1']
+                    
+                    tableau_poules.append({
+                        'Saison': int(row['Saison']),
+                        'V/D': 'V' if victoire else 'D',
+                        'Date': row['Date'].strftime('%d/%m/%y'),
+                        'Compétition': row['Compétition'],
+                        'Escrimeur': escrimeur,
+                        'Score': f"{int(row['Touches Marquées'])} - {int(row['Touches Reçues'])}",
+                        'Adversaire': adversaire,
+                        '_victoire': victoire  # Colonne cachée pour le style
+                    })
+                
+                df_affichage_poules = pd.DataFrame(tableau_poules)
+                
+                # Fonction pour colorier les lignes
+                def colorier_ligne(row):
+                    if row['_victoire']:
+                        return ['color: green'] * len(row)
+                    else:
+                        return ['color: red'] * len(row)
+                
+                # Supprimer la colonne cachée avant affichage
+                df_affichage_poules_final = df_affichage_poules.drop(columns=['_victoire'])
+                
+                # Appliquer le style
+                df_styled = df_affichage_poules.style.apply(colorier_ligne, axis=1)
+                df_styled = df_styled.hide(axis='columns', subset=['_victoire'])
+                
+                st.dataframe(df_styled, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucun match de poule pour cet escrimeur.")
+    
+    with col2:
+        with st.container(border=True):
+            st.subheader("15 derniers matchs de Tableau")
+            
+            if len(df_tableaux) > 0:
+                # Prendre les 15 derniers matchs de tableau
+                df_derniers_tableaux = df_tableaux.sort_values('Date', ascending=False).head(15).copy()
+                
+                # Créer le tableau d'affichage
+                tableau_tableaux = []
+                for _, row in df_derniers_tableaux.iterrows():
+                    victoire = row['Touches Marquées'] > row['Touches Reçues']
+                    adversaire = row['Tireur 2'] if row['Tireur 1'] == escrimeur else row['Tireur 1']
+                    
+                    tableau_tableaux.append({
+                        'Saison': int(row['Saison']),
+                        'V/D': 'V' if victoire else 'D',
+                        'Date': row['Date'].strftime('%d/%m/%y'),
+                        'Compétition': row['Compétition'],
+                        'Escrimeur': escrimeur,
+                        'Score': f"{int(row['Touches Marquées'])} - {int(row['Touches Reçues'])}",
+                        'Adversaire': adversaire,
+                        '_victoire': victoire  # Colonne cachée pour le style
+                    })
+                
+                df_affichage_tableaux = pd.DataFrame(tableau_tableaux)
+                
+                # Fonction pour colorier les lignes
+                def colorier_ligne_tableau(row):
+                    if row['_victoire']:
+                        return ['color: green'] * len(row)
+                    else:
+                        return ['color: red'] * len(row)
+                
+                # Appliquer le style
+                df_styled_tableaux = df_affichage_tableaux.style.apply(colorier_ligne_tableau, axis=1)
+                df_styled_tableaux = df_styled_tableaux.hide(axis='columns', subset=['_victoire'])
+                
+                st.dataframe(df_styled_tableaux, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucun match de tableau pour cet escrimeur.")
