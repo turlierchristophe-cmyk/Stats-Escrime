@@ -19,17 +19,20 @@ df = charger_donnees()
 
 # Navigation en haut avec boutons
 st.markdown("### Navigation")
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("📊 Matchs", use_container_width=True, type="primary"):
-        st.session_state.page = "analyse"
+        st.session_state.page = "matchs"
 with col2:
-    if st.button("📋 Consultation Data_matchs", use_container_width=True):
+    if st.button("🏆 Résultats", use_container_width=True):
+        st.session_state.page = "resultats"
+with col3:
+    if st.button("📋 Tous les matchs", use_container_width=True):
         st.session_state.page = "consultation"
 
 # Initialiser la page par défaut
 if 'page' not in st.session_state:
-    st.session_state.page = "analyse"
+    st.session_state.page = "matchs"
 
 st.markdown("---")
 
@@ -163,8 +166,8 @@ if st.session_state.page == "consultation":
         mime="text/csv"
     )
 
-# ===== PAGE 2: ANALYSE ESCRIMEUR =====
-else:
+# ===== PAGE 2: MATCHS =====
+elif st.session_state.page == "matchs":
     st.title("📊 Matchs")
     
     # Récupérer tous les tireurs et les trier par ordre alphabétique
@@ -333,8 +336,8 @@ else:
         df_stats = df_stats.sort_values('touches_recues_moy', ascending=True).reset_index(drop=True)
         df_stats['rang_tr'] = range(1, len(df_stats) + 1)
         
-        # Rang touches reçues en victoire (INVERSE : décroissant = moins bien)
-        df_stats = df_stats.sort_values('touches_recues_victoire', ascending=False).reset_index(drop=True)
+        # Rang touches reçues en victoire (croissant = moins c'est mieux)
+        df_stats = df_stats.sort_values('touches_recues_victoire', ascending=True).reset_index(drop=True)
         df_stats['rang_trv'] = range(1, len(df_stats) + 1)
         
         # Rang touches marquées en défaite (décroissant)
@@ -691,16 +694,25 @@ else:
                 
                 df_affichage_poules = pd.DataFrame(tableau_poules)
                 
-                # Fonction pour colorier les lignes
-                def colorier_ligne(row):
-                    if row['_victoire']:
-                        return ['color: green'] * len(row)
+                # Supprimer la colonne _victoire
+                victoires_list = df_affichage_poules['_victoire'].tolist()
+                df_affichage_final = df_affichage_poules.drop(columns=['_victoire'])
+                
+                # Créer un DataFrame de styles basé sur les victoires
+                def get_color(val, row_idx):
+                    if victoires_list[row_idx]:
+                        return 'color: green'
                     else:
-                        return ['color: red'] * len(row)
+                        return 'color: red'
+                
+                # Créer une matrice de styles
+                styles = pd.DataFrame('', index=df_affichage_final.index, columns=df_affichage_final.columns)
+                for idx in df_affichage_final.index:
+                    for col in df_affichage_final.columns:
+                        styles.at[idx, col] = get_color(df_affichage_final.at[idx, col], idx)
                 
                 # Appliquer le style
-                df_styled = df_affichage_poules.style.apply(colorier_ligne, axis=1)
-                df_styled = df_styled.hide(axis='columns', subset=['_victoire'])
+                df_styled = df_affichage_final.style.apply(lambda x: styles, axis=None)
                 
                 st.dataframe(df_styled, use_container_width=True, hide_index=True, height=600)
             else:
@@ -743,17 +755,109 @@ else:
                 
                 df_affichage_tableaux = pd.DataFrame(tableau_tableaux)
                 
-                # Fonction pour colorier les lignes
-                def colorier_ligne_tableau(row):
-                    if row['_victoire']:
-                        return ['color: green'] * len(row)
+                # Supprimer la colonne _victoire
+                victoires_list_tableaux = df_affichage_tableaux['_victoire'].tolist()
+                df_affichage_final_tableaux = df_affichage_tableaux.drop(columns=['_victoire'])
+                
+                # Créer un DataFrame de styles basé sur les victoires
+                def get_color_tableau(val, row_idx):
+                    if victoires_list_tableaux[row_idx]:
+                        return 'color: green'
                     else:
-                        return ['color: red'] * len(row)
+                        return 'color: red'
+                
+                # Créer une matrice de styles
+                styles_tableaux = pd.DataFrame('', index=df_affichage_final_tableaux.index, columns=df_affichage_final_tableaux.columns)
+                for idx in df_affichage_final_tableaux.index:
+                    for col in df_affichage_final_tableaux.columns:
+                        styles_tableaux.at[idx, col] = get_color_tableau(df_affichage_final_tableaux.at[idx, col], idx)
                 
                 # Appliquer le style
-                df_styled_tableaux = df_affichage_tableaux.style.apply(colorier_ligne_tableau, axis=1)
-                df_styled_tableaux = df_styled_tableaux.hide(axis='columns', subset=['_victoire'])
+                df_styled_tableaux = df_affichage_final_tableaux.style.apply(lambda x: styles_tableaux, axis=None)
                 
                 st.dataframe(df_styled_tableaux, use_container_width=True, hide_index=True, height=600)
             else:
                 st.info("Aucun match de tableau pour cet escrimeur.")
+
+# ===== PAGE 3: RÉSULTATS =====
+elif st.session_state.page == "resultats":
+    st.title("🏆 Résultats")
+    
+    # Charger les données des classements
+    @st.cache_data
+    def charger_classements():
+        df_class = pd.read_excel('Résultats_Escrime_V5_2.xlsm', sheet_name='Data_classements')
+        df_class['Date'] = pd.to_datetime(df_class['Date'])
+        return df_class
+    
+    df_classements = charger_classements()
+    
+    # Récupérer tous les tireurs de la base classements
+    tireurs_classements = sorted(df_classements['Tireur'].unique())
+    
+    # Filtres en haut
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        escrimeur_res = st.selectbox("Sélectionner un escrimeur", tireurs_classements, key="escrimeur_resultats")
+    
+    with col2:
+        # Filtre saisons
+        saisons_class = sorted([s for s in df_classements['Saison'].unique() if s != 2021])
+        saison_min_res, saison_max_res = st.select_slider(
+            "Plage de saisons",
+            options=saisons_class,
+            value=(min(saisons_class), max(saisons_class)),
+            key="saisons_resultats"
+        )
+    
+    # Filtrer les données pour l'escrimeur et les saisons
+    df_class_filtre = df_classements[
+        (df_classements['Tireur'] == escrimeur_res) &
+        (df_classements['Saison'] >= saison_min_res) &
+        (df_classements['Saison'] <= saison_max_res)
+    ].copy()
+    
+    # Calculer les statistiques
+    total_competitions = len(df_class_filtre)
+    medailles = len(df_class_filtre[df_class_filtre['Rang'] <= 3])
+    pct_medailles = (medailles / total_competitions * 100) if total_competitions > 0 else 0
+    
+    # Afficher le résumé
+    st.markdown("---")
+    with st.container(border=True):
+        st.markdown(f"### {escrimeur_res} est médaillé dans {pct_medailles:.0f}% des {total_competitions} compétitions auxquelles il a participé")
+        
+        st.markdown("")
+        
+        # Statistiques CN
+        st.markdown("#### Circuits Nationaux")
+        df_cn = df_class_filtre[df_class_filtre['CN / CdF'] == 'CN']
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            premiers_cn = len(df_cn[df_cn['Rang'] == 1])
+            st.metric("🥇 1er", premiers_cn)
+        with col2:
+            seconds_cn = len(df_cn[df_cn['Rang'] == 2])
+            st.metric("🥈 2ème", seconds_cn)
+        with col3:
+            troisiemes_cn = len(df_cn[df_cn['Rang'] == 3])
+            st.metric("🥉 3ème", troisiemes_cn)
+        
+        st.markdown("")
+        
+        # Statistiques CdF
+        st.markdown("#### Championnats de France")
+        df_cdf = df_class_filtre[df_class_filtre['CN / CdF'] == 'CdF']
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            premiers_cdf = len(df_cdf[df_cdf['Rang'] == 1])
+            st.metric("🥇 1er", premiers_cdf)
+        with col2:
+            seconds_cdf = len(df_cdf[df_cdf['Rang'] == 2])
+            st.metric("🥈 2ème", seconds_cdf)
+        with col3:
+            troisiemes_cdf = len(df_cdf[df_cdf['Rang'] == 3])
+            st.metric("🥉 3ème", troisiemes_cdf)
