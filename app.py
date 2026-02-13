@@ -99,7 +99,7 @@ st.markdown("### Navigation")
 # Définir les couleurs des boutons selon la page active
 page_actuelle = st.session_state.get('page', 'matchs')
 
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 with col1:
     bouton_type_matchs = "secondary" if page_actuelle != "matchs" else "primary"
     if st.button("📊 Matchs", use_container_width=True, type=bouton_type_matchs, key="btn_matchs"):
@@ -121,14 +121,385 @@ with col4:
         st.session_state.page = "rankings"
         st.rerun()
 with col5:
+    bouton_type_competition = "secondary" if page_actuelle != "competition" else "primary"
+    if st.button("🏆 Compétition", use_container_width=True, type=bouton_type_competition, key="btn_competition"):
+        st.session_state.page = "competition"
+        st.rerun()
+with col6:
     bouton_type_consultation = "secondary" if page_actuelle != "consultation" else "primary"
-    if st.button("📋 Base de données des matchs", use_container_width=True, type=bouton_type_consultation, key="btn_consultation"):
+    if st.button("📋 Base de données", use_container_width=True, type=bouton_type_consultation, key="btn_consultation"):
         st.session_state.page = "consultation"
         st.rerun()
 
 # Initialiser la page par défaut
 if 'page' not in st.session_state:
     st.session_state.page = "matchs"
+
+# ===== PAGE 6: COMPÉTITION (TABLEAU D'ÉLIMINATION) =====
+elif st.session_state.page == "competition":
+    st.title("🏆 Compétition - Tableau d'élimination")
+    
+    # Charger les classements
+    @st.cache_data
+    def charger_classements_competition():
+        df_class = pd.read_excel('Résultats_Escrime_V5_2.xlsm', sheet_name='Data_classements')
+        return df_class
+    
+    df_class_comp = charger_classements_competition()
+    
+    # Filtres
+    with st.container(border=True):
+        col_saison, col_compet, col_cat = st.columns(3)
+        
+        with col_saison:
+            saisons_comp = sorted([s for s in df['Saison'].unique() if s != 2021])
+            saison_comp = st.selectbox("Saison", saisons_comp, key="saison_comp")
+        
+        df_saison = df[df['Saison'] == saison_comp]
+        competitions = sorted(df_saison['Compétition'].unique())
+        
+        with col_compet:
+            if len(competitions) > 0:
+                competition_comp = st.selectbox("Compétition", competitions, key="compet_comp")
+            else:
+                st.info("Aucune compétition")
+                competition_comp = None
+        
+        if competition_comp:
+            df_compet = df_saison[df_saison['Compétition'] == competition_comp]
+            categories = sorted(df_compet['Catégorie'].unique())
+            
+            with col_cat:
+                if len(categories) > 0:
+                    categorie_comp = st.selectbox("Catégorie", categories, key="cat_comp")
+                else:
+                    st.info("Aucune catégorie")
+                    categorie_comp = None
+        else:
+            categorie_comp = None
+    
+    if competition_comp and categorie_comp:
+        df_tableau = df[
+            (df['Saison'] == saison_comp) &
+            (df['Compétition'] == competition_comp) &
+            (df['Catégorie'] == categorie_comp) &
+            (df['Poule / Tableau'].notna()) &
+            (~df['Poule / Tableau'].str.startswith('Poule', na=False))
+        ].copy()
+        
+        if len(df_tableau) > 0:
+            col_tableau, col_classement = st.columns([4, 1])
+            
+            with col_classement:
+                st.markdown("### Classement Final")
+                df_class_final = df_class_comp[
+                    (df_class_comp['Saison'] == saison_comp) &
+                    (df_class_comp['Compétition'] == competition_comp) &
+                    (df_class_comp['Catégorie'] == categorie_comp)
+                ].sort_values('Rang')
+                
+                if len(df_class_final) > 0:
+                    for _, row in df_class_final.iterrows():
+                        st.markdown(f"**{int(row['Rang'])}.** {row['Tireur']}")
+            
+            with col_tableau:
+                # Déterminer les tours présents
+                tours_presents = df_tableau['Poule / Tableau'].unique()
+                ordre_tours = ['Tableau de 64', 'Tableau de 32', 'Tableau de 16', 'Quart de finale', 'Demi finale', 'Finale']
+                tours_a_afficher = [t for t in ordre_tours if t in tours_presents]
+                
+                if len(tours_a_afficher) > 0:
+                    html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <style>
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
+                    table { border-collapse: collapse; }
+                    td { padding: 8px; border: 1px solid #ddd; min-height: 25px; min-width: 150px; }
+                    th { background-color: #f0f0f0; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
+                    .blue { background-color: #3498db; color: white; }
+                    .yellow { background-color: #f39c12; color: white; }
+                    .green { background-color: #2ecc71; color: white; }
+                    .red { background-color: #e74c3c; color: white; }
+                    .transparent { background-color: transparent; }
+                    </style>
+                    </head>
+                    <body>
+                    <table>
+                    """
+                    
+                    # Header
+                    html += "<tr><th>Tableau de 32</th></tr>"
+                    
+                    # Template exact selon votre fichier Excel
+                    # Format: (ligne, seed, type, num_match)
+                    template = [
+                        (1, 1, 'tireur1', 1),
+                        (2, 1, 'score', 1),
+                        (3, 32, 'tireur2', 1),
+                        (4, None, 'vide', None),
+                        (5, 17, 'tireur2', 16),
+                        (6, 16, 'score', 16),
+                        (7, 16, 'tireur1', 16),
+                        (8, None, 'vide', None),
+                        (9, 9, 'tireur1', 9),
+                        (10, 9, 'score', 9),
+                        (11, 24, 'tireur2', 9),
+                        (12, None, 'vide', None),
+                        (13, 25, 'tireur2', 8),
+                        (14, 8, 'score', 8),
+                        (15, 8, 'tireur1', 8),
+                        (16, None, 'vide', None),
+                        (17, 5, 'tireur1', 5),
+                        (18, 5, 'score', 5),
+                        (19, 28, 'tireur2', 5),
+                        (20, None, 'vide', None),
+                        (21, 21, 'tireur2', 12),
+                        (22, 12, 'score', 12),
+                        (23, 12, 'tireur1', 12),
+                        (24, None, 'vide', None),
+                        (25, 13, 'tireur1', 13),
+                        (26, 13, 'score', 13),
+                        (27, 20, 'tireur2', 13),
+                        (28, None, 'vide', None),
+                        (29, 29, 'tireur2', 4),
+                        (30, 4, 'score', 4),
+                        (31, 4, 'tireur1', 4),
+                        (32, None, 'vide', None),
+                        (33, 3, 'tireur1', 3),
+                        (34, 3, 'score', 3),
+                        (35, 30, 'tireur2', 3),
+                        (36, None, 'vide', None),
+                        (37, 19, 'tireur2', 14),
+                        (38, 14, 'score', 14),
+                        (39, 14, 'tireur1', 14),
+                        (40, None, 'vide', None),
+                        (41, 11, 'tireur1', 11),
+                        (42, 11, 'score', 11),
+                        (43, 22, 'tireur2', 11),
+                        (44, None, 'vide', None),
+                        (45, 27, 'tireur2', 6),
+                        (46, 6, 'score', 6),
+                        (47, 6, 'tireur1', 6),
+                        (48, None, 'vide', None),
+                        (49, 7, 'tireur1', 7),
+                        (50, 7, 'score', 7),
+                        (51, 26, 'tireur2', 7),
+                        (52, None, 'vide', None),
+                        (53, 23, 'tireur2', 10),
+                        (54, 10, 'score', 10),
+                        (55, 10, 'tireur1', 10),
+                        (56, None, 'vide', None),
+                        (57, 15, 'tireur1', 15),
+                        (58, 15, 'score', 15),
+                        (59, 18, 'tireur2', 15),
+                        (60, None, 'vide', None),
+                        (61, 31, 'tireur2', 2),
+                        (62, 2, 'score', 2),
+                        (63, 2, 'tireur1', 2),
+                    ]
+                    
+                    # Organiser matchs par Num Match
+                    matchs_t32 = {}
+                    if 'Tableau de 32' in df_tableau['Poule / Tableau'].values:
+                        df_t32 = df_tableau[df_tableau['Poule / Tableau'] == 'Tableau de 32']
+                        for _, match in df_t32.iterrows():
+                            matchs_t32[int(match['Num Match'])] = match
+                    
+                    # Pour chaque ligne du template
+                    for ligne_num, seed, type_ligne, num_match in template:
+                        html += "<tr>"
+                        
+                        # Ligne vide → toujours transparent
+                        if type_ligne == 'vide':
+                            html += "<td class='transparent'></td>"
+                        else:
+                            # Déterminer la couleur de base selon la ligne
+                            if ligne_num <= 16:
+                                base_color = 'blue'
+                            elif ligne_num <= 32:
+                                base_color = 'yellow'
+                            elif ligne_num <= 48:
+                                base_color = 'green'
+                            else:
+                                base_color = 'red'
+                            
+                            # Vérifier si le match existe
+                            if num_match in matchs_t32:
+                                match_data = matchs_t32[num_match]
+                                
+                                if type_ligne == 'tireur1':
+                                    # Couleur car il y a un escrimeur
+                                    html += f"<td class='{base_color}'>{seed} - {match_data['Tireur 1']}</td>"
+                                elif type_ligne == 'tireur2':
+                                    # Couleur car il y a un escrimeur
+                                    html += f"<td class='{base_color}'>{seed} - {match_data['Tireur 2']}</td>"
+                                elif type_ligne == 'score':
+                                    # Transparent pour le score
+                                    html += f"<td class='transparent' style='text-align:center;'>{int(match_data['Touches Tireur 1'])} - {int(match_data['Touches Tireur 2'])}</td>"
+                            else:
+                                # Match n'existe pas → transparent
+                                if type_ligne == 'score':
+                                    html += f"<td class='transparent'></td>"
+                                else:
+                                    html += f"<td class='transparent'>{seed} - </td>"
+                        
+                        html += "</tr>"
+                    
+                    html += "</table></body></html>"
+                    
+                    import streamlit.components.v1 as components
+                    components.html(html, height=1200, scrolling=True)
+                    html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <style>
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
+                    table { border-collapse: collapse; }
+                    td { padding: 8px; border: 1px solid #ddd; min-height: 25px; }
+                    th { background-color: #f0f0f0; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
+                    .blue { background-color: #3498db; color: white; }
+                    .yellow { background-color: #f39c12; color: white; }
+                    .green { background-color: #2ecc71; color: white; }
+                    .red { background-color: #e74c3c; color: white; }
+                    .transparent { background-color: transparent; }
+                    .score { text-align: center; font-weight: bold; }
+                    </style>
+                    </head>
+                    <body>
+                    <table>
+                    """
+                    
+                    # Headers
+                    html += "<tr>"
+                    for tour in tours_a_afficher:
+                        html += f"<th>{tour}</th>"
+                    html += "</tr>"
+                    
+                    # Organiser matchs par tour
+                    matchs_par_tour = {}
+                    for tour in tours_a_afficher:
+                        df_tour = df_tableau[df_tableau['Poule / Tableau'] == tour].sort_values('Num Match')
+                        matchs_dict = {}
+                        for _, match in df_tour.iterrows():
+                            matchs_dict[int(match['Num Match'])] = match
+                        matchs_par_tour[tour] = matchs_dict
+                    
+                    # Si le premier tour est Tableau de 32
+                    premier_tour = tours_a_afficher[0]
+                    
+                    if premier_tour == 'Tableau de 32':
+                        # Ordre des matchs comme spécifié
+                        ordre_matchs = [1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31]
+                        
+                        # TOUJOURS 63 lignes pour Tableau de 32
+                        for i in range(1, 64):
+                            html += "<tr>"
+                            
+                            # Colonne Tableau de 32 (colonne A)
+                            if i % 2 == 1:  # Lignes impaires (1, 3, 5, ...)
+                                # Déterminer quel match et quel tireur
+                                index_match = (i - 1) // 3
+                                
+                                if index_match < len(ordre_matchs):
+                                    num_match = ordre_matchs[index_match]
+                                    seed_position = num_match  # Position théorique
+                                    
+                                    # Couleur selon position
+                                    if i <= 15:
+                                        base_color = 'blue'
+                                    elif i <= 31:
+                                        base_color = 'yellow'
+                                    elif i <= 47:
+                                        base_color = 'green'
+                                    else:
+                                        base_color = 'red'
+                                    
+                                    # Trouver le match dans les données
+                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
+                                    
+                                    if num_match in matchs_t32:
+                                        match = matchs_t32[num_match]
+                                        # Cellule avec couleur car il y a un tireur
+                                        html += f"<td class='{base_color}'>{seed_position} - {match['Tireur 1']}</td>"
+                                    else:
+                                        # Cellule transparente car pas de tireur
+                                        html += f"<td class='transparent'>{seed_position} - </td>"
+                                else:
+                                    # Cellule transparente
+                                    html += "<td class='transparent'></td>"
+                            
+                            elif i % 3 == 2:  # Lignes 2, 5, 8, 11... (scores)
+                                index_match = (i - 2) // 3
+                                
+                                if index_match < len(ordre_matchs):
+                                    num_match = ordre_matchs[index_match]
+                                    
+                                    # Couleur
+                                    if i <= 15:
+                                        base_color = 'blue'
+                                    elif i <= 31:
+                                        base_color = 'yellow'
+                                    elif i <= 47:
+                                        base_color = 'green'
+                                    else:
+                                        base_color = 'red'
+                                    
+                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
+                                    if num_match in matchs_t32:
+                                        match = matchs_t32[num_match]
+                                        # Cellule avec couleur car il y a un score
+                                        html += f"<td class='{base_color} score'>{int(match['Touches Tireur 1'])} - {int(match['Touches Tireur 2'])}</td>"
+                                    else:
+                                        # Cellule transparente car pas de score
+                                        html += f"<td class='transparent score'>-</td>"
+                                else:
+                                    # Cellule transparente
+                                    html += "<td class='transparent'></td>"
+                            
+                            else:  # Lignes 3, 6, 9, 12... (Tireur 2)
+                                index_match = (i - 3) // 3
+                                
+                                if index_match < len(ordre_matchs):
+                                    num_match = ordre_matchs[index_match]
+                                    seed_adversaire = 33 - num_match
+                                    
+                                    # Couleur
+                                    if i <= 15:
+                                        base_color = 'blue'
+                                    elif i <= 31:
+                                        base_color = 'yellow'
+                                    elif i <= 47:
+                                        base_color = 'green'
+                                    else:
+                                        base_color = 'red'
+                                    
+                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
+                                    if num_match in matchs_t32:
+                                        match = matchs_t32[num_match]
+                                        # Cellule avec couleur car il y a un tireur
+                                        html += f"<td class='{base_color}'>{seed_adversaire} - {match['Tireur 2']}</td>"
+                                    else:
+                                        # Cellule transparente car pas de tireur
+                                        html += f"<td class='transparent'>{seed_adversaire} - </td>"
+                                else:
+                                    # Cellule transparente
+                                    html += "<td class='transparent'></td>"
+                            
+                            html += "</tr>"
+                    
+                    html += "</table></body></html>"
+                    
+                    import streamlit.components.v1 as components
+                    components.html(html, height=1200, scrolling=True)
+                else:
+                    st.warning("Aucun tableau d'élimination")
+        else:
+            st.info("Aucun match de tableau")
+    else:
+        st.info("Veuillez sélectionner une saison, une compétition et une catégorie")
 
 # ===== PAGE 1: BASE DE DONNÉES DES MATCHS =====
 if st.session_state.page == "consultation":
@@ -1762,308 +2133,338 @@ elif st.session_state.page == "rankings":
     if len(stats_tireurs) > 0:
         df_stats_complet = pd.DataFrame(stats_tireurs)
         
-        # Zone de sélection avec BOUTONS par catégories
+                                        # Zone de sélection avec TABS et BOUTONS RADIO
         with st.container(border=True):
-            # Configuration des rankings
-            rankings_config = {
-                # MATCH
-                "Nombre total de matches tirés": {'col': 'Nb matchs', 'titre': 'Plus grand nombre de matches tirés', 'type': 'simple', 'cat': 'match'},
-                "Nombre de matches en poule": {'col': 'Nb matchs poule', 'titre': 'Plus grand nombre de matches en poule', 'type': 'simple', 'cat': 'match'},
-                "Nombre de matches de tableau": {'col': 'Nb matchs tableau', 'titre': 'Plus grand nombre de matches de tableau', 'type': 'simple', 'cat': 'match'},
-                # VICTOIRES
-                "% total de victoires": {'col': 'Pct victoires total', 'titre': 'Meilleur % total de victoires', 'type': 'pourcentage', 'cat': 'victoires'},
-                "% de victoires en poules": {'col': 'Pct victoires poules', 'titre': 'Meilleur % de victoires en poules', 'type': 'pourcentage', 'cat': 'victoires'},
-                "% de victoires dans le tableau": {'col': 'Pct victoires tableau', 'titre': 'Meilleur % de victoires dans le tableau', 'type': 'pourcentage', 'cat': 'victoires'},
-                "Nombre de victoires": {'col': 'Nb victoires', 'titre': 'Plus grand nombre de victoires', 'type': 'simple', 'cat': 'victoires'},
-                "Nombre de victoires serrées": {'col': 'Nb vict serrees', 'titre': 'Plus grand nombre de victoires serrées', 'type': 'empile', 'col1': 'Vict 5-4', 'col2': 'Vict 10-9', 'label1': 'Victoires 5-4', 'label2': 'Victoires 10-9', 'cat': 'victoires'},
-                "Nombre de défaites serrées": {'col': 'Nb def serrees', 'titre': 'Plus grand nombre de défaites serrées', 'type': 'empile', 'col1': 'Def 4-5', 'col2': 'Def 9-10', 'label1': 'Défaites 4-5', 'label2': 'Défaites 9-10', 'cat': 'victoires'},
-                "Nerf d'acier": {'col': 'Nerf acier', 'titre': 'Nerf d\'acier (victoires 10-9)', 'type': 'simple', 'cat': 'victoires'},
-                # TOUCHES
-                "Nombre total de touches marquées": {'col': 'Total touches marquees', 'titre': 'Plus grand nombre de touches marquées', 'type': 'empile_touches', 'col1': 'Touches marquees poule', 'col2': 'Touches marquees tableau', 'cat': 'touches'},
-                "Nombre moyen de touches marquées par compétition": {'col': 'Moy touches par compet', 'titre': 'Meilleure moyenne de touches marquées par compétition', 'type': 'decimal', 'cat': 'touches'},
-                "Nombre de touches reçues": {'col': 'Total touches recues', 'titre': 'Plus grand nombre de touches reçues', 'type': 'simple', 'cat': 'touches'},
-                "Nombre moyen de touches reçues par compétition": {'col': 'Moy touches recues par compet', 'titre': 'Moyenne de touches reçues par compétition', 'type': 'decimal', 'cat': 'touches'},
-                # POULE
-                "Nombre de touches marquées en poule": {'col': 'Touches marquees poule', 'titre': 'Plus grand nombre de touches marquées en poule', 'type': 'simple', 'cat': 'poule'},
-                "Nombre de touches reçues en poule": {'col': 'Touches recues poule', 'titre': 'Plus grand nombre de touches reçues en poule', 'type': 'simple', 'cat': 'poule'},
-                "Nombre de touches marquées en moyenne par match de poule": {'col': 'Moy touches marquees par match poule', 'titre': 'Meilleure moyenne de touches marquées par match de poule', 'type': 'decimal', 'cat': 'poule'},
-                "Nombre de touches reçues en moyenne par match de poule": {'col': 'Moy touches recues par match poule', 'titre': 'Moyenne de touches reçues par match de poule', 'type': 'decimal', 'cat': 'poule'},
-                "Nombre de matchs à 5-4": {'col': 'Nb matchs 5-4', 'titre': 'Plus grand nombre de matchs à 5-4', 'type': 'simple', 'cat': 'poule'},
-                # TABLEAU
-                "Nombre de touches marquées dans le tableau": {'col': 'Touches marquees tableau', 'titre': 'Plus grand nombre de touches marquées dans le tableau', 'type': 'simple', 'cat': 'tableau'},
-                "Nombre de touches reçues dans le tableau": {'col': 'Touches recues tableau', 'titre': 'Plus grand nombre de touches reçues dans le tableau', 'type': 'simple', 'cat': 'tableau'},
-                "Nombre de touches marquées en moy. par match de tableau": {'col': 'Moy touches marquees par match tableau', 'titre': 'Meilleure moyenne de touches marquées par match de tableau', 'type': 'decimal', 'cat': 'tableau'},
-                "Nombre de touches reçues en moy. par match de tableau": {'col': 'Moy touches recues par match tableau', 'titre': 'Moyenne de touches reçues par match de tableau', 'type': 'decimal', 'cat': 'tableau'},
-                "Nombre de matchs à 10-9": {'col': 'Nb matchs 10-9', 'titre': 'Plus grand nombre de matchs à 10-9', 'type': 'simple', 'cat': 'tableau'},
-                # COMPETITIONS
-                "Nombre de compétitions gagnées": {'col': 'Nb compet gagnees', 'titre': 'Plus grand nombre de compétitions gagnées', 'type': 'simple', 'cat': 'compet'},
-                "Nombre de podiums": {'col': 'Nb podiums', 'titre': 'Plus grand nombre de podiums', 'type': 'simple', 'cat': 'compet'},
-                "Nombre de participations": {'col': 'Nb participations', 'titre': 'Plus grand nombre de participations', 'type': 'simple', 'cat': 'compet'}
-            }
+            # Initialiser le ranking par défaut
+            if 'ranking_choisi' not in st.session_state:
+                st.session_state.ranking_choisi = 'Nombre total de matches tirés'
             
-            # Catégorie MATCH
-            st.markdown("### 📋 MATCH")
-            cols = st.columns(3)
-            match_options = ["Nombre total de matches tirés", "Nombre de matches en poule", "Nombre de matches de tableau"]
-            for i, option in enumerate(match_options):
-                with cols[i]:
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(option.replace("Nombre de matches", "Nb"), key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
+            # Tabs pour les catégories
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "📋 MATCH", 
+                "🏆 VICTOIRES", 
+                "⚔️ TOUCHES", 
+                "🐔 TOUCHES POULE", 
+                "📊 TOUCHES TABLEAU", 
+                "🏅 COMPETITIONS"
+            ])
             
-            st.markdown("")
+            with tab1:
+                choice = st.radio(
+                    "",
+                    [
+                        "Nombre total de matches tirés",
+                        "Nombre de matches en poule",
+                        "Nombre de matches de tableau"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_match",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_match)
+                )
             
-            # Catégorie VICTOIRES
-            st.markdown("### 🏆 VICTOIRES")
-            cols = st.columns(4)
-            victoires_options = ["% total de victoires", "% de victoires en poules", "% de victoires dans le tableau", "Nombre de victoires", "Nombre de victoires serrées", "Nombre de défaites serrées", "Nerf d'acier"]
-            for i, option in enumerate(victoires_options):
-                with cols[i % 4]:
-                    label = option.replace("Nombre de victoires", "Nb vict").replace("Nombre de défaites", "Nb déf").replace("% total de victoires", "% total vict").replace("% de victoires", "% vict")
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(label, key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
+            with tab2:
+                choice = st.radio(
+                    "",
+                    [
+                        "% total de victoires",
+                        "% de victoires en poules",
+                        "% de victoires dans le tableau",
+                        "Nombre de victoires",
+                        "Nombre de victoires serrées",
+                        "Nombre de défaites serrées",
+                        "Nerf d'acier"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_victoires",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_victoires)
+                )
             
-            st.markdown("")
+            with tab3:
+                choice = st.radio(
+                    "",
+                    [
+                        "Nombre total de touches marquées",
+                        "Nombre moyen de touches marquées par compétition",
+                        "Nombre de touches reçues",
+                        "Nombre moyen de touches reçues par compétition"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_touches",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_touches)
+                )
             
-            # Catégorie TOUCHES
-            st.markdown("### ⚔️ TOUCHES")
-            cols = st.columns(4)
-            touches_options = ["Nombre total de touches marquées", "Nombre moyen de touches marquées par compétition", "Nombre de touches reçues", "Nombre moyen de touches reçues par compétition"]
-            for i, option in enumerate(touches_options):
-                with cols[i]:
-                    label = option.replace("Nombre total de touches", "Total touches").replace("Nombre moyen de touches", "Moy touches").replace("Nombre de touches", "Touches")
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(label, key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
+            with tab4:
+                choice = st.radio(
+                    "",
+                    [
+                        "Nombre de touches marquées en poule",
+                        "Nombre de touches reçues en poule",
+                        "Nombre de touches marquées en moyenne par match de poule",
+                        "Nombre de touches reçues en moyenne par match de poule",
+                        "Nombre de matchs à 5-4"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_poule",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_poule)
+                )
             
-            st.markdown("")
+            with tab5:
+                choice = st.radio(
+                    "",
+                    [
+                        "Nombre de touches marquées dans le tableau",
+                        "Nombre de touches reçues dans le tableau",
+                        "Nombre de touches marquées en moy. par match de tableau",
+                        "Nombre de touches reçues en moy. par match de tableau",
+                        "Nombre de matchs à 10-9"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_tableau",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_tableau)
+                )
             
-            # Catégorie TOUCHES POULE
-            st.markdown("### 🐔 TOUCHES POULE")
-            cols = st.columns(5)
-            poule_options = ["Nombre de touches marquées en poule", "Nombre de touches reçues en poule", "Nombre de touches marquées en moyenne par match de poule", "Nombre de touches reçues en moyenne par match de poule", "Nombre de matchs à 5-4"]
-            for i, option in enumerate(poule_options):
-                with cols[i]:
-                    label = option.replace("Nombre de touches marquées en poule", "Marquées").replace("Nombre de touches reçues en poule", "Reçues").replace("Nombre de touches marquées en moyenne par match de poule", "Moy marquées/match").replace("Nombre de touches reçues en moyenne par match de poule", "Moy reçues/match").replace("Nombre de matchs à 5-4", "Matchs 5-4")
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(label, key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
-            
-            st.markdown("")
-            
-            # Catégorie TOUCHES TABLEAU
-            st.markdown("### 📊 TOUCHES TABLEAU")
-            cols = st.columns(5)
-            tableau_options = ["Nombre de touches marquées dans le tableau", "Nombre de touches reçues dans le tableau", "Nombre de touches marquées en moy. par match de tableau", "Nombre de touches reçues en moy. par match de tableau", "Nombre de matchs à 10-9"]
-            for i, option in enumerate(tableau_options):
-                with cols[i]:
-                    label = option.replace("Nombre de touches marquées dans le tableau", "Marquées").replace("Nombre de touches reçues dans le tableau", "Reçues").replace("Nombre de touches marquées en moy. par match de tableau", "Moy marquées/match").replace("Nombre de touches reçues en moy. par match de tableau", "Moy reçues/match").replace("Nombre de matchs à 10-9", "Matchs 10-9")
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(label, key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
-            
-            st.markdown("")
-            
-            # Catégorie COMPETITIONS
-            st.markdown("### 🏅 COMPETITIONS")
-            cols = st.columns(3)
-            compet_options = ["Nombre de compétitions gagnées", "Nombre de podiums", "Nombre de participations"]
-            for i, option in enumerate(compet_options):
-                with cols[i]:
-                    label = option.replace("Nombre de compétitions", "Nb compét").replace("Nombre de podiums", "Nb podiums").replace("Nombre de participations", "Nb participations")
-                    btn_type = "primary" if st.session_state.ranking_choisi == option else "secondary"
-                    if st.button(label, key=f"btn_{option}", use_container_width=True, type=btn_type):
-                        st.session_state.ranking_choisi = option
-                        st.rerun()
+            with tab6:
+                choice = st.radio(
+                    "",
+                    [
+                        "Nombre de compétitions gagnées",
+                        "Nombre de podiums",
+                        "Nombre de participations"
+                    ],
+                    index=0,
+                    label_visibility="collapsed",
+                    key="radio_compet",
+                    on_change=lambda: setattr(st.session_state, 'ranking_choisi', 
+                                             st.session_state.radio_compet)
+                )
         
         # Obtenir le ranking choisi
         ranking_choisi = st.session_state.ranking_choisi
-        config = rankings_config[ranking_choisi]
-        df_stats = df_stats_complet.sort_values(config['col'], ascending=False).copy()
         
-        # Trouver la position de l'escrimeur sélectionné
-        position_escrimeur = None
-        valeur_escrimeur = None
-        if escrimeur_selectionne and escrimeur_selectionne in df_stats['Tireur'].values:
-            position_escrimeur = df_stats[df_stats['Tireur'] == escrimeur_selectionne].index[0] + 1
-            valeur_escrimeur = df_stats[df_stats['Tireur'] == escrimeur_selectionne][config['col']].values[0]
-        
-        # Podium
-        with st.container(border=True):
-            st.markdown(f"<h3 style='text-align: center;'>{config['titre']}</h3>", unsafe_allow_html=True)
+        # N'afficher le graphique que si un ranking est choisi
+        if ranking_choisi:        
+
+            # Configuration des rankings
+            rankings_config = {
+                # MATCH
+                "Nombre total de matches tirés": {'col': 'Nb matchs', 'titre': 'Plus grand nombre de matches tirés', 'type': 'simple'},
+                "Nombre de matches en poule": {'col': 'Nb matchs poule', 'titre': 'Plus grand nombre de matches en poule', 'type': 'simple'},
+                "Nombre de matches de tableau": {'col': 'Nb matchs tableau', 'titre': 'Plus grand nombre de matches de tableau', 'type': 'simple'},
+                # VICTOIRES
+                "% total de victoires": {'col': 'Pct victoires total', 'titre': 'Meilleur % total de victoires', 'type': 'pourcentage'},
+                "% de victoires en poules": {'col': 'Pct victoires poules', 'titre': 'Meilleur % de victoires en poules', 'type': 'pourcentage'},
+                "% de victoires dans le tableau": {'col': 'Pct victoires tableau', 'titre': 'Meilleur % de victoires dans le tableau', 'type': 'pourcentage'},
+                "Nombre de victoires": {'col': 'Nb victoires', 'titre': 'Plus grand nombre de victoires', 'type': 'simple'},
+                "Nombre de victoires serrées": {'col': 'Nb vict serrees', 'titre': 'Plus grand nombre de victoires serrées', 'type': 'empile', 'col1': 'Vict 5-4', 'col2': 'Vict 10-9', 'label1': 'Victoires 5-4', 'label2': 'Victoires 10-9'},
+                "Nombre de défaites serrées": {'col': 'Nb def serrees', 'titre': 'Plus grand nombre de défaites serrées', 'type': 'empile', 'col1': 'Def 4-5', 'col2': 'Def 9-10', 'label1': 'Défaites 4-5', 'label2': 'Défaites 9-10'},
+                "Nerf d'acier": {'col': 'Nerf acier', 'titre': 'Nerf d\'acier (victoires 10-9)', 'type': 'simple'},
+                # TOUCHES
+                "Nombre total de touches marquées": {'col': 'Total touches marquees', 'titre': 'Plus grand nombre de touches marquées', 'type': 'empile_touches', 'col1': 'Touches marquees poule', 'col2': 'Touches marquees tableau'},
+                "Nombre moyen de touches marquées par compétition": {'col': 'Moy touches par compet', 'titre': 'Meilleure moyenne de touches marquées par compétition', 'type': 'decimal'},
+                "Nombre de touches reçues": {'col': 'Total touches recues', 'titre': 'Plus grand nombre de touches reçues', 'type': 'simple'},
+                "Nombre moyen de touches reçues par compétition": {'col': 'Moy touches recues par compet', 'titre': 'Moyenne de touches reçues par compétition', 'type': 'decimal'},
+                # POULE
+                "Nombre de touches marquées en poule": {'col': 'Touches marquees poule', 'titre': 'Plus grand nombre de touches marquées en poule', 'type': 'simple'},
+                "Nombre de touches reçues en poule": {'col': 'Touches recues poule', 'titre': 'Plus grand nombre de touches reçues en poule', 'type': 'simple'},
+                "Nombre de touches marquées en moyenne par match de poule": {'col': 'Moy touches marquees par match poule', 'titre': 'Meilleure moyenne de touches marquées par match de poule', 'type': 'decimal'},
+                "Nombre de touches reçues en moyenne par match de poule": {'col': 'Moy touches recues par match poule', 'titre': 'Moyenne de touches reçues par match de poule', 'type': 'decimal'},
+                "Nombre de matchs à 5-4": {'col': 'Nb matchs 5-4', 'titre': 'Plus grand nombre de matchs à 5-4', 'type': 'simple'},
+                # TABLEAU
+                "Nombre de touches marquées dans le tableau": {'col': 'Touches marquees tableau', 'titre': 'Plus grand nombre de touches marquées dans le tableau', 'type': 'simple'},
+                "Nombre de touches reçues dans le tableau": {'col': 'Touches recues tableau', 'titre': 'Plus grand nombre de touches reçues dans le tableau', 'type': 'simple'},
+                "Nombre de touches marquées en moy. par match de tableau": {'col': 'Moy touches marquees par match tableau', 'titre': 'Meilleure moyenne de touches marquées par match de tableau', 'type': 'decimal'},
+                "Nombre de touches reçues en moy. par match de tableau": {'col': 'Moy touches recues par match tableau', 'titre': 'Moyenne de touches reçues par match de tableau', 'type': 'decimal'},
+                "Nombre de matchs à 10-9": {'col': 'Nb matchs 10-9', 'titre': 'Plus grand nombre de matchs à 10-9', 'type': 'simple'},
+                # COMPETITIONS
+                "Nombre de compétitions gagnées": {'col': 'Nb compet gagnees', 'titre': 'Plus grand nombre de compétitions gagnées', 'type': 'simple'},
+                "Nombre de podiums": {'col': 'Nb podiums', 'titre': 'Plus grand nombre de podiums', 'type': 'simple'},
+                "Nombre de participations": {'col': 'Nb participations', 'titre': 'Plus grand nombre de participations', 'type': 'simple'}
+            }
+            
+            config = rankings_config[ranking_choisi]
+            df_stats = df_stats_complet.sort_values(config['col'], ascending=False).copy()
+            
+            # Trouver la position de l'escrimeur sélectionné
+            position_escrimeur = None
+            valeur_escrimeur = None
+            if escrimeur_selectionne and escrimeur_selectionne in df_stats['Tireur'].values:
+                df_stats_reset = df_stats.reset_index(drop=True)
+                position_escrimeur = df_stats_reset[df_stats_reset['Tireur'] == escrimeur_selectionne].index[0] + 1
+                valeur_escrimeur = df_stats[df_stats['Tireur'] == escrimeur_selectionne][config['col']].values[0]
+            
+                        # Podium
+            with st.container(border=True):
+                st.markdown(f"<h3 style='text-align: center;'>{config['titre']}</h3>", unsafe_allow_html=True)
+                st.markdown("")
+                
+                # Si un escrimeur est sélectionné, toujours afficher sa colonne
+                if position_escrimeur:
+                    col1, col2, col3, col_sep, col_esc = st.columns([1, 1, 1, 0.2, 1])
+                else:
+                    col1, col2, col3 = st.columns(3)
+                    col_esc = None
+                
+                with col1:
+                    if len(df_stats) >= 2:
+                        deuxieme = df_stats.iloc[1]
+                        if config['type'] == 'pourcentage':
+                            valeur = f"{deuxieme[config['col']]:.1f}%"
+                        elif config['type'] == 'decimal':
+                            valeur = f"{deuxieme[config['col']]:.1f}"
+                        else:
+                            valeur = str(int(deuxieme[config['col']]))
+                        st.markdown(f"<h1 style='text-align: center;'>🥈</h1>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align: center; font-size: 18px;'>{deuxieme['Tireur']}</p>", unsafe_allow_html=True)
+                
+                with col2:
+                    if len(df_stats) >= 1:
+                        premier = df_stats.iloc[0]
+                        if config['type'] == 'pourcentage':
+                            valeur = f"{premier[config['col']]:.1f}%"
+                        elif config['type'] == 'decimal':
+                            valeur = f"{premier[config['col']]:.1f}"
+                        else:
+                            valeur = str(int(premier[config['col']]))
+                        st.markdown(f"<h1 style='text-align: center;'>🥇</h1>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align: center; font-size: 18px;'>{premier['Tireur']}</p>", unsafe_allow_html=True)
+                
+                with col3:
+                    if len(df_stats) >= 3:
+                        troisieme = df_stats.iloc[2]
+                        if config['type'] == 'pourcentage':
+                            valeur = f"{troisieme[config['col']]:.1f}%"
+                        elif config['type'] == 'decimal':
+                            valeur = f"{troisieme[config['col']]:.1f}"
+                        else:
+                            valeur = str(int(troisieme[config['col']]))
+                        st.markdown(f"<h1 style='text-align: center;'>🥉</h1>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align: center; font-size: 18px;'>{troisieme['Tireur']}</p>", unsafe_allow_html=True)
+                
+                if col_esc:
+                    with col_esc:
+                        if config['type'] == 'pourcentage':
+                            valeur = f"{valeur_escrimeur:.1f}%"
+                        elif config['type'] == 'decimal':
+                            valeur = f"{valeur_escrimeur:.1f}"
+                        else:
+                            valeur = str(int(valeur_escrimeur))
+                        st.markdown(f"<h1 style='text-align: center;'>#{position_escrimeur}</h1>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align: center; font-size: 18px;'>{escrimeur_selectionne}</p>", unsafe_allow_html=True)
+            
+            # Histogramme
             st.markdown("")
             
-            # Colonnes pour le podium + escrimeur sélectionné
-            if position_escrimeur and position_escrimeur > 3:
-                col1, col2, col3, col_sep, col_esc = st.columns([1, 1, 1, 0.2, 1])
-            else:
-                col1, col2, col3 = st.columns(3)
-                col_esc = None
-            
-            with col1:
-                if len(df_stats) >= 2:
-                    deuxieme = df_stats.iloc[1]
-                    if config['type'] == 'pourcentage':
-                        valeur = f"{deuxieme[config['col']]:.1f}%"
-                    elif config['type'] == 'decimal':
-                        valeur = f"{deuxieme[config['col']]:.1f}"
-                    else:
-                        valeur = str(int(deuxieme[config['col']]))
-                    st.markdown(f"<h1 style='text-align: center;'>🥈</h1>", unsafe_allow_html=True)
-                    st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align: center; font-size: 18px;'>{deuxieme['Tireur']}</p>", unsafe_allow_html=True)
-            
-            with col2:
-                if len(df_stats) >= 1:
-                    premier = df_stats.iloc[0]
-                    if config['type'] == 'pourcentage':
-                        valeur = f"{premier[config['col']]:.1f}%"
-                    elif config['type'] == 'decimal':
-                        valeur = f"{premier[config['col']]:.1f}"
-                    else:
-                        valeur = str(int(premier[config['col']]))
-                    st.markdown(f"<h1 style='text-align: center;'>🥇</h1>", unsafe_allow_html=True)
-                    st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align: center; font-size: 18px;'>{premier['Tireur']}</p>", unsafe_allow_html=True)
-            
-            with col3:
-                if len(df_stats) >= 3:
-                    troisieme = df_stats.iloc[2]
-                    if config['type'] == 'pourcentage':
-                        valeur = f"{troisieme[config['col']]:.1f}%"
-                    elif config['type'] == 'decimal':
-                        valeur = f"{troisieme[config['col']]:.1f}"
-                    else:
-                        valeur = str(int(troisieme[config['col']]))
-                    st.markdown(f"<h1 style='text-align: center;'>🥉</h1>", unsafe_allow_html=True)
-                    st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align: center; font-size: 18px;'>{troisieme['Tireur']}</p>", unsafe_allow_html=True)
-            
-            # Afficher l'escrimeur sélectionné s'il n'est pas dans le top 3
-            if col_esc:
-                with col_esc:
-                    if config['type'] == 'pourcentage':
-                        valeur = f"{valeur_escrimeur:.1f}%"
-                    elif config['type'] == 'decimal':
-                        valeur = f"{valeur_escrimeur:.1f}"
-                    else:
-                        valeur = str(int(valeur_escrimeur))
-                    st.markdown(f"<h1 style='text-align: center;'>#{position_escrimeur}</h1>", unsafe_allow_html=True)
-                    st.markdown(f"<h2 style='text-align: center;'>{valeur}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align: center; font-size: 18px;'>{escrimeur_selectionne}</p>", unsafe_allow_html=True)
-        
-        # Histogramme
-        st.markdown("")
-        
-        with st.container(border=True):
-            if config['type'] == 'empile_touches':
-                # Histogramme empilé pour les touches (5 et 10)
-                fig = go.Figure()
-                
-                # Couleurs : rouge pour l'escrimeur sélectionné, bleu pour les autres
-                couleurs_5 = ['#FF0000' if tireur == escrimeur_selectionne else '#9370DB' for tireur in df_stats['Tireur']]
-                couleurs_10 = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
-                
-                fig.add_trace(go.Bar(
-                    y=df_stats['Tireur'],
-                    x=df_stats[config['col1']],
-                    name='Matchs en 5 touches',
-                    orientation='h',
-                    marker_color=couleurs_5,
-                    text=df_stats[config['col']],
-                    textposition='outside',
-                    textfont=dict(size=12)
-                ))
-                
-                fig.add_trace(go.Bar(
-                    y=df_stats['Tireur'],
-                    x=df_stats[config['col2']],
-                    name='Matchs en 10 touches',
-                    orientation='h',
-                    marker_color=couleurs_10
-                ))
-                
-                fig.update_layout(
-                    barmode='stack',
-                    height=max(400, len(df_stats) * 25),
-                    xaxis_title="Nombre de touches",
-                    yaxis_title="",
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    yaxis=dict(autorange='reversed')
-                )
-            elif config['type'] == 'empile':
-                # Histogramme empilé pour victoires/défaites serrées
-                fig = go.Figure()
-                
-                couleurs_1 = ['#FF0000' if tireur == escrimeur_selectionne else '#9370DB' for tireur in df_stats['Tireur']]
-                couleurs_2 = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
-                
-                fig.add_trace(go.Bar(
-                    y=df_stats['Tireur'],
-                    x=df_stats[config['col1']],
-                    name=config['label1'],
-                    orientation='h',
-                    marker_color=couleurs_1,
-                    text=df_stats[config['col']],
-                    textposition='outside',
-                    textfont=dict(size=12)
-                ))
-                
-                fig.add_trace(go.Bar(
-                    y=df_stats['Tireur'],
-                    x=df_stats[config['col2']],
-                    name=config['label2'],
-                    orientation='h',
-                    marker_color=couleurs_2
-                ))
-                
-                fig.update_layout(
-                    barmode='stack',
-                    height=max(400, len(df_stats) * 25),
-                    xaxis_title="Nombre",
-                    yaxis_title="",
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    yaxis=dict(autorange='reversed')
-                )
-            else:
-                # Histogramme simple
-                fig = go.Figure()
-                
-                # Couleurs : rouge pour l'escrimeur sélectionné
-                couleurs = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
-                
-                if config['type'] == 'pourcentage':
-                    text_vals = df_stats[config['col']].apply(lambda x: f"{x:.1f}%")
-                elif config['type'] == 'decimal':
-                    text_vals = df_stats[config['col']].apply(lambda x: f"{x:.1f}")
+            with st.container(border=True):
+                if config['type'] == 'empile_touches':
+                    fig = go.Figure()
+                    couleurs_5 = ['#FF0000' if tireur == escrimeur_selectionne else '#9370DB' for tireur in df_stats['Tireur']]
+                    couleurs_10 = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
+                    
+                    fig.add_trace(go.Bar(
+                        y=df_stats['Tireur'],
+                        x=df_stats[config['col1']],
+                        name='Matchs en 5 touches',
+                        orientation='h',
+                        marker_color=couleurs_5,
+                        text=df_stats[config['col']],
+                        textposition='outside',
+                        textfont=dict(size=12)
+                    ))
+                    
+                    fig.add_trace(go.Bar(
+                        y=df_stats['Tireur'],
+                        x=df_stats[config['col2']],
+                        name='Matchs en 10 touches',
+                        orientation='h',
+                        marker_color=couleurs_10
+                    ))
+                    
+                    fig.update_layout(
+                        barmode='stack',
+                        height=max(400, len(df_stats) * 25),
+                        xaxis_title="Nombre de touches",
+                        yaxis_title="",
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        yaxis=dict(autorange='reversed')
+                    )
+                elif config['type'] == 'empile':
+                    fig = go.Figure()
+                    couleurs_1 = ['#FF0000' if tireur == escrimeur_selectionne else '#9370DB' for tireur in df_stats['Tireur']]
+                    couleurs_2 = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
+                    
+                    fig.add_trace(go.Bar(
+                        y=df_stats['Tireur'],
+                        x=df_stats[config['col1']],
+                        name=config['label1'],
+                        orientation='h',
+                        marker_color=couleurs_1,
+                        text=df_stats[config['col']],
+                        textposition='outside',
+                        textfont=dict(size=12)
+                    ))
+                    
+                    fig.add_trace(go.Bar(
+                        y=df_stats['Tireur'],
+                        x=df_stats[config['col2']],
+                        name=config['label2'],
+                        orientation='h',
+                        marker_color=couleurs_2
+                    ))
+                    
+                    fig.update_layout(
+                        barmode='stack',
+                        height=max(400, len(df_stats) * 25),
+                        xaxis_title="Nombre",
+                        yaxis_title="",
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        yaxis=dict(autorange='reversed')
+                    )
                 else:
-                    text_vals = df_stats[config['col']].apply(lambda x: str(int(x)))
+                    fig = go.Figure()
+                    couleurs = ['#FF0000' if tireur == escrimeur_selectionne else '#4169E1' for tireur in df_stats['Tireur']]
+                    
+                    if config['type'] == 'pourcentage':
+                        text_vals = df_stats[config['col']].apply(lambda x: f"{x:.1f}%")
+                    elif config['type'] == 'decimal':
+                        text_vals = df_stats[config['col']].apply(lambda x: f"{x:.1f}")
+                    else:
+                        text_vals = df_stats[config['col']].apply(lambda x: str(int(x)))
+                    
+                    fig.add_trace(go.Bar(
+                        y=df_stats['Tireur'],
+                        x=df_stats[config['col']],
+                        orientation='h',
+                        marker_color=couleurs,
+                        text=text_vals,
+                        textposition='outside'
+                    ))
+                    
+                    fig.update_layout(
+                        height=max(400, len(df_stats) * 25),
+                        xaxis_title="",
+                        yaxis_title="",
+                        showlegend=False,
+                        yaxis=dict(autorange='reversed')
+                    )
                 
-                fig.add_trace(go.Bar(
-                    y=df_stats['Tireur'],
-                    x=df_stats[config['col']],
-                    orientation='h',
-                    marker_color=couleurs,
-                    text=text_vals,
-                    textposition='outside'
-                ))
-                
-                fig.update_layout(
-                    height=max(400, len(df_stats) * 25),
-                    xaxis_title="",
-                    yaxis_title="",
-                    showlegend=False,
-                    yaxis=dict(autorange='reversed')
-                )
-            
-            st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("👆 Sélectionnez une statistique dans les onglets ci-dessus pour afficher le classement.")
     else:
         st.info("Aucun tireur n'a fait au moins 10 matchs sur cette période.")
