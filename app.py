@@ -1601,8 +1601,17 @@ elif st.session_state.page == "rankings":
     with st.container(border=True):
         col_esc, col_saisons = st.columns([2, 1])
         
+        with col_saisons:
+            saisons_rankings = sorted([s for s in df['Saison'].unique() if s != 2021])
+            saison_min_rank, saison_max_rank = st.select_slider(
+                "Plage de saisons",
+                options=saisons_rankings,
+                value=(min(saisons_rankings), max(saisons_rankings)),
+                key="saisons_rankings"
+            )
+        
         with col_esc:
-            tous_tireurs_temp = sorted(set(df_filtre['Tireur 1'].unique()) | set(df_filtre['Tireur 2'].unique()))
+            tous_tireurs_temp = sorted(set(df['Tireur 1'].unique()) | set(df['Tireur 2'].unique()))
             liste_tireurs = [''] + tous_tireurs_temp
             
             # Pré-sélectionner l'escrimeur principal
@@ -1617,15 +1626,6 @@ elif st.session_state.page == "rankings":
                 liste_tireurs,
                 index=index_esc_rankings,
                 key="esc_rankings"
-            )
-        
-        with col_saisons:
-            saisons_rankings = sorted([s for s in df['Saison'].unique() if s != 2021])
-            saison_min_rank, saison_max_rank = st.select_slider(
-                "Plage de saisons",
-                options=saisons_rankings,
-                value=(min(saisons_rankings), max(saisons_rankings)),
-                key="saisons_rankings"
             )
     
     # Filtrer les données selon les saisons
