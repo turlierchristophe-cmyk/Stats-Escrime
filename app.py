@@ -39,12 +39,39 @@ with st.sidebar:
     # Sélection de l'escrimeur principal
     st.markdown("### 👤 Escrimeur principal")
     
+    # Infobulle pour mobile (CSS qui détecte les petits écrans)
+    st.markdown("""
+    <style>
+    @media (max-width: 768px) {
+        .mobile-hint {
+            display: block !important;
+            background-color: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            text-align: center;
+        }
+    }
+    @media (min-width: 769px) {
+        .mobile-hint {
+            display: none !important;
+        }
+    }
+    </style>
+    <div class="mobile-hint">
+        👆 Cliquez ici pour sélectionner l'escrimeur principal
+    </div>
+    """, unsafe_allow_html=True)
+    
     index_actuel = tous_les_escrimeurs.index(st.session_state.escrimeur_principal)
     escrimeur_principal = st.selectbox(
-        "Changer d'escrimeur",
+        "",  # Label vide
         tous_les_escrimeurs,
         index=index_actuel,
-        key="select_esc_principal"
+        key="select_esc_principal",
+        label_visibility="collapsed"
     )
     
     # Mettre à jour si changement
@@ -93,6 +120,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+
 # Navigation en haut avec boutons
 st.markdown("### Navigation")
 
@@ -139,41 +167,66 @@ if 'page' not in st.session_state:
 elif st.session_state.page == "competition":
     st.title("🏆 Compétition - Tableau d'élimination")
     
-    # Charger les classements
-    @st.cache_data
-    def charger_classements_competition():
-        df_class = pd.read_excel('Résultats_Escrime_V5_2.xlsm', sheet_name='Data_classements')
-        return df_class
-    
-    df_class_comp = charger_classements_competition()
+    # Initialiser les valeurs dans session_state si elles n'existent pas
+    if 'comp_saison' not in st.session_state:
+        st.session_state.comp_saison = None
+    if 'comp_competition' not in st.session_state:
+        st.session_state.comp_competition = None
+    if 'comp_categorie' not in st.session_state:
+        st.session_state.comp_categorie = None
     
     # Filtres
     with st.container(border=True):
         col_saison, col_compet, col_cat = st.columns(3)
         
         with col_saison:
-            saisons_comp = sorted([s for s in df['Saison'].unique() if s != 2021])
-            saison_comp = st.selectbox("Saison", saisons_comp, key="saison_comp")
+            # Saisons triées de la plus récente à la plus ancienne
+            saisons_comp = sorted([s for s in df['Saison'].unique() if s != 2021], reverse=True)
+            
+            # Déterminer l'index par défaut
+            if st.session_state.comp_saison and st.session_state.comp_saison in saisons_comp:
+                default_idx = saisons_comp.index(st.session_state.comp_saison)
+            else:
+                default_idx = 0
+            
+            saison_comp = st.selectbox("Saison", saisons_comp, index=default_idx, key="saison_comp_unique")
+            st.session_state.comp_saison = saison_comp
         
         df_saison = df[df['Saison'] == saison_comp]
         competitions = sorted(df_saison['Compétition'].unique())
         
         with col_compet:
             if len(competitions) > 0:
-                competition_comp = st.selectbox("Compétition", competitions, key="compet_comp")
+                # Déterminer l'index par défaut
+                if st.session_state.comp_competition and st.session_state.comp_competition in competitions:
+                    default_idx = competitions.index(st.session_state.comp_competition)
+                else:
+                    default_idx = 0
+                
+                competition_comp = st.selectbox("Compétition", competitions, index=default_idx, key="compet_comp_unique")
+                st.session_state.comp_competition = competition_comp
             else:
                 st.info("Aucune compétition")
                 competition_comp = None
         
         if competition_comp:
             df_compet = df_saison[df_saison['Compétition'] == competition_comp]
-            categories = sorted(df_compet['Catégorie'].unique())
+            # Filtrer uniquement VH1, VH2, VH3
+            categories_all = df_compet['Catégorie'].unique()
+            categories = sorted([c for c in categories_all if c in ['VH1', 'VH2', 'VH3']])
             
             with col_cat:
                 if len(categories) > 0:
-                    categorie_comp = st.selectbox("Catégorie", categories, key="cat_comp")
+                    # Déterminer l'index par défaut
+                    if st.session_state.comp_categorie and st.session_state.comp_categorie in categories:
+                        default_idx = categories.index(st.session_state.comp_categorie)
+                    else:
+                        default_idx = 0
+                    
+                    categorie_comp = st.selectbox("Catégorie", categories, index=default_idx, key="cat_comp_unique")
+                    st.session_state.comp_categorie = categorie_comp
                 else:
-                    st.info("Aucune catégorie")
+                    st.info("Aucune catégorie VH")
                     categorie_comp = None
         else:
             categorie_comp = None
@@ -188,19 +241,20 @@ elif st.session_state.page == "competition":
         ].copy()
         
         if len(df_tableau) > 0:
-            col_tableau, col_classement = st.columns([4, 1])
+            # Charger le classement final
+            @st.cache_data
+            def charger_classements():
+                return pd.read_excel('Résultats_Escrime_V5_2.xlsm', sheet_name='Data_classements')
             
-            with col_classement:
-                st.markdown("### Classement Final")
-                df_class_final = df_class_comp[
-                    (df_class_comp['Saison'] == saison_comp) &
-                    (df_class_comp['Compétition'] == competition_comp) &
-                    (df_class_comp['Catégorie'] == categorie_comp)
-                ].sort_values('Rang')
-                
-                if len(df_class_final) > 0:
-                    for _, row in df_class_final.iterrows():
-                        st.markdown(f"**{int(row['Rang'])}.** {row['Tireur']}")
+            df_class = charger_classements()
+            df_class_final = df_class[
+                (df_class['Saison'] == saison_comp) &
+                (df_class['Compétition'] == competition_comp) &
+                (df_class['Catégorie'] == categorie_comp)
+            ].sort_values('Rang')
+            
+            # Layout avec tableau à gauche et classement à droite
+            col_tableau, col_classement = st.columns([3, 1])
             
             with col_tableau:
                 # Déterminer les tours présents
@@ -209,295 +263,37 @@ elif st.session_state.page == "competition":
                 tours_a_afficher = [t for t in ordre_tours if t in tours_presents]
                 
                 if len(tours_a_afficher) > 0:
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
+                    # Utiliser le module tableau.py pour générer le HTML
+                    from tableau import generer_tableau_html
+                    
+                    html = generer_tableau_html(df_tableau, tours_a_afficher, st.session_state.escrimeur_principal)
+                    
+                    import streamlit.components.v1 as components
+                    components.html(html, height=1200, scrolling=False)
+            
+            with col_classement:
+                st.markdown("### Classement Final")
+                if len(df_class_final) > 0:
+                    # Réduire l'interligne avec du CSS
+                    st.markdown("""
                     <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
-                    table { border-collapse: collapse; }
-                    td { padding: 8px; border: 1px solid #ddd; min-height: 25px; min-width: 150px; }
-                    th { background-color: #f0f0f0; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
-                    .blue { background-color: #3498db; color: white; }
-                    .yellow { background-color: #f39c12; color: white; }
-                    .green { background-color: #2ecc71; color: white; }
-                    .red { background-color: #e74c3c; color: white; }
-                    .transparent { background-color: transparent; }
+                    .classement-item {
+                        margin: 2px 0;
+                        line-height: 1.2;
+                    }
                     </style>
-                    </head>
-                    <body>
-                    <table>
-                    """
+                    """, unsafe_allow_html=True)
                     
-                    # Header
-                    html += "<tr><th>Tableau de 32</th></tr>"
-                    
-                    # Template exact selon votre fichier Excel
-                    # Format: (ligne, seed, type, num_match)
-                    template = [
-                        (1, 1, 'tireur1', 1),
-                        (2, 1, 'score', 1),
-                        (3, 32, 'tireur2', 1),
-                        (4, None, 'vide', None),
-                        (5, 17, 'tireur2', 16),
-                        (6, 16, 'score', 16),
-                        (7, 16, 'tireur1', 16),
-                        (8, None, 'vide', None),
-                        (9, 9, 'tireur1', 9),
-                        (10, 9, 'score', 9),
-                        (11, 24, 'tireur2', 9),
-                        (12, None, 'vide', None),
-                        (13, 25, 'tireur2', 8),
-                        (14, 8, 'score', 8),
-                        (15, 8, 'tireur1', 8),
-                        (16, None, 'vide', None),
-                        (17, 5, 'tireur1', 5),
-                        (18, 5, 'score', 5),
-                        (19, 28, 'tireur2', 5),
-                        (20, None, 'vide', None),
-                        (21, 21, 'tireur2', 12),
-                        (22, 12, 'score', 12),
-                        (23, 12, 'tireur1', 12),
-                        (24, None, 'vide', None),
-                        (25, 13, 'tireur1', 13),
-                        (26, 13, 'score', 13),
-                        (27, 20, 'tireur2', 13),
-                        (28, None, 'vide', None),
-                        (29, 29, 'tireur2', 4),
-                        (30, 4, 'score', 4),
-                        (31, 4, 'tireur1', 4),
-                        (32, None, 'vide', None),
-                        (33, 3, 'tireur1', 3),
-                        (34, 3, 'score', 3),
-                        (35, 30, 'tireur2', 3),
-                        (36, None, 'vide', None),
-                        (37, 19, 'tireur2', 14),
-                        (38, 14, 'score', 14),
-                        (39, 14, 'tireur1', 14),
-                        (40, None, 'vide', None),
-                        (41, 11, 'tireur1', 11),
-                        (42, 11, 'score', 11),
-                        (43, 22, 'tireur2', 11),
-                        (44, None, 'vide', None),
-                        (45, 27, 'tireur2', 6),
-                        (46, 6, 'score', 6),
-                        (47, 6, 'tireur1', 6),
-                        (48, None, 'vide', None),
-                        (49, 7, 'tireur1', 7),
-                        (50, 7, 'score', 7),
-                        (51, 26, 'tireur2', 7),
-                        (52, None, 'vide', None),
-                        (53, 23, 'tireur2', 10),
-                        (54, 10, 'score', 10),
-                        (55, 10, 'tireur1', 10),
-                        (56, None, 'vide', None),
-                        (57, 15, 'tireur1', 15),
-                        (58, 15, 'score', 15),
-                        (59, 18, 'tireur2', 15),
-                        (60, None, 'vide', None),
-                        (61, 31, 'tireur2', 2),
-                        (62, 2, 'score', 2),
-                        (63, 2, 'tireur1', 2),
-                    ]
-                    
-                    # Organiser matchs par Num Match
-                    matchs_t32 = {}
-                    if 'Tableau de 32' in df_tableau['Poule / Tableau'].values:
-                        df_t32 = df_tableau[df_tableau['Poule / Tableau'] == 'Tableau de 32']
-                        for _, match in df_t32.iterrows():
-                            matchs_t32[int(match['Num Match'])] = match
-                    
-                    # Pour chaque ligne du template
-                    for ligne_num, seed, type_ligne, num_match in template:
-                        html += "<tr>"
-                        
-                        # Ligne vide → toujours transparent
-                        if type_ligne == 'vide':
-                            html += "<td class='transparent'></td>"
+                    for _, row in df_class_final.iterrows():
+                        tireur = row['Tireur']
+                        rang = int(row['Rang'])
+                        # Colorer en rouge si c'est l'escrimeur principal
+                        if tireur == st.session_state.escrimeur_principal:
+                            st.markdown(f"<div class='classement-item'><span style='color:red; font-weight:bold'>{rang}. {tireur}</span></div>", unsafe_allow_html=True)
                         else:
-                            # Déterminer la couleur de base selon la ligne
-                            if ligne_num <= 16:
-                                base_color = 'blue'
-                            elif ligne_num <= 32:
-                                base_color = 'yellow'
-                            elif ligne_num <= 48:
-                                base_color = 'green'
-                            else:
-                                base_color = 'red'
-                            
-                            # Vérifier si le match existe
-                            if num_match in matchs_t32:
-                                match_data = matchs_t32[num_match]
-                                
-                                if type_ligne == 'tireur1':
-                                    # Couleur car il y a un escrimeur
-                                    html += f"<td class='{base_color}'>{seed} - {match_data['Tireur 1']}</td>"
-                                elif type_ligne == 'tireur2':
-                                    # Couleur car il y a un escrimeur
-                                    html += f"<td class='{base_color}'>{seed} - {match_data['Tireur 2']}</td>"
-                                elif type_ligne == 'score':
-                                    # Transparent pour le score
-                                    html += f"<td class='transparent' style='text-align:center;'>{int(match_data['Touches Tireur 1'])} - {int(match_data['Touches Tireur 2'])}</td>"
-                            else:
-                                # Match n'existe pas → transparent
-                                if type_ligne == 'score':
-                                    html += f"<td class='transparent'></td>"
-                                else:
-                                    html += f"<td class='transparent'>{seed} - </td>"
-                        
-                        html += "</tr>"
-                    
-                    html += "</table></body></html>"
-                    
-                    import streamlit.components.v1 as components
-                    components.html(html, height=1200, scrolling=True)
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                    <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
-                    table { border-collapse: collapse; }
-                    td { padding: 8px; border: 1px solid #ddd; min-height: 25px; }
-                    th { background-color: #f0f0f0; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
-                    .blue { background-color: #3498db; color: white; }
-                    .yellow { background-color: #f39c12; color: white; }
-                    .green { background-color: #2ecc71; color: white; }
-                    .red { background-color: #e74c3c; color: white; }
-                    .transparent { background-color: transparent; }
-                    .score { text-align: center; font-weight: bold; }
-                    </style>
-                    </head>
-                    <body>
-                    <table>
-                    """
-                    
-                    # Headers
-                    html += "<tr>"
-                    for tour in tours_a_afficher:
-                        html += f"<th>{tour}</th>"
-                    html += "</tr>"
-                    
-                    # Organiser matchs par tour
-                    matchs_par_tour = {}
-                    for tour in tours_a_afficher:
-                        df_tour = df_tableau[df_tableau['Poule / Tableau'] == tour].sort_values('Num Match')
-                        matchs_dict = {}
-                        for _, match in df_tour.iterrows():
-                            matchs_dict[int(match['Num Match'])] = match
-                        matchs_par_tour[tour] = matchs_dict
-                    
-                    # Si le premier tour est Tableau de 32
-                    premier_tour = tours_a_afficher[0]
-                    
-                    if premier_tour == 'Tableau de 32':
-                        # Ordre des matchs comme spécifié
-                        ordre_matchs = [1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31]
-                        
-                        # TOUJOURS 63 lignes pour Tableau de 32
-                        for i in range(1, 64):
-                            html += "<tr>"
-                            
-                            # Colonne Tableau de 32 (colonne A)
-                            if i % 2 == 1:  # Lignes impaires (1, 3, 5, ...)
-                                # Déterminer quel match et quel tireur
-                                index_match = (i - 1) // 3
-                                
-                                if index_match < len(ordre_matchs):
-                                    num_match = ordre_matchs[index_match]
-                                    seed_position = num_match  # Position théorique
-                                    
-                                    # Couleur selon position
-                                    if i <= 15:
-                                        base_color = 'blue'
-                                    elif i <= 31:
-                                        base_color = 'yellow'
-                                    elif i <= 47:
-                                        base_color = 'green'
-                                    else:
-                                        base_color = 'red'
-                                    
-                                    # Trouver le match dans les données
-                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
-                                    
-                                    if num_match in matchs_t32:
-                                        match = matchs_t32[num_match]
-                                        # Cellule avec couleur car il y a un tireur
-                                        html += f"<td class='{base_color}'>{seed_position} - {match['Tireur 1']}</td>"
-                                    else:
-                                        # Cellule transparente car pas de tireur
-                                        html += f"<td class='transparent'>{seed_position} - </td>"
-                                else:
-                                    # Cellule transparente
-                                    html += "<td class='transparent'></td>"
-                            
-                            elif i % 3 == 2:  # Lignes 2, 5, 8, 11... (scores)
-                                index_match = (i - 2) // 3
-                                
-                                if index_match < len(ordre_matchs):
-                                    num_match = ordre_matchs[index_match]
-                                    
-                                    # Couleur
-                                    if i <= 15:
-                                        base_color = 'blue'
-                                    elif i <= 31:
-                                        base_color = 'yellow'
-                                    elif i <= 47:
-                                        base_color = 'green'
-                                    else:
-                                        base_color = 'red'
-                                    
-                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
-                                    if num_match in matchs_t32:
-                                        match = matchs_t32[num_match]
-                                        # Cellule avec couleur car il y a un score
-                                        html += f"<td class='{base_color} score'>{int(match['Touches Tireur 1'])} - {int(match['Touches Tireur 2'])}</td>"
-                                    else:
-                                        # Cellule transparente car pas de score
-                                        html += f"<td class='transparent score'>-</td>"
-                                else:
-                                    # Cellule transparente
-                                    html += "<td class='transparent'></td>"
-                            
-                            else:  # Lignes 3, 6, 9, 12... (Tireur 2)
-                                index_match = (i - 3) // 3
-                                
-                                if index_match < len(ordre_matchs):
-                                    num_match = ordre_matchs[index_match]
-                                    seed_adversaire = 33 - num_match
-                                    
-                                    # Couleur
-                                    if i <= 15:
-                                        base_color = 'blue'
-                                    elif i <= 31:
-                                        base_color = 'yellow'
-                                    elif i <= 47:
-                                        base_color = 'green'
-                                    else:
-                                        base_color = 'red'
-                                    
-                                    matchs_t32 = matchs_par_tour.get('Tableau de 32', {})
-                                    if num_match in matchs_t32:
-                                        match = matchs_t32[num_match]
-                                        # Cellule avec couleur car il y a un tireur
-                                        html += f"<td class='{base_color}'>{seed_adversaire} - {match['Tireur 2']}</td>"
-                                    else:
-                                        # Cellule transparente car pas de tireur
-                                        html += f"<td class='transparent'>{seed_adversaire} - </td>"
-                                else:
-                                    # Cellule transparente
-                                    html += "<td class='transparent'></td>"
-                            
-                            html += "</tr>"
-                    
-                    html += "</table></body></html>"
-                    
-                    import streamlit.components.v1 as components
-                    components.html(html, height=1200, scrolling=True)
+                            st.markdown(f"<div class='classement-item'>{rang}. {tireur}</div>", unsafe_allow_html=True)
                 else:
-                    st.warning("Aucun tableau d'élimination")
-        else:
-            st.info("Aucun match de tableau")
+                    st.info("Aucun classement disponible")
     else:
         st.info("Veuillez sélectionner une saison, une compétition et une catégorie")
 
