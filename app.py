@@ -257,43 +257,159 @@ elif st.session_state.page == "competition":
             col_tableau, col_classement = st.columns([3, 1])
             
             with col_tableau:
-                # Déterminer les tours présents
-                tours_presents = df_tableau['Poule / Tableau'].unique()
-                ordre_tours = ['Tableau de 64', 'Tableau de 32', 'Tableau de 16', 'Quart de finale', 'Demi finale', 'Finale']
-                tours_a_afficher = [t for t in ordre_tours if t in tours_presents]
-                
-                if len(tours_a_afficher) > 0:
-                    # Utiliser le module tableau.py pour générer le HTML
-                    from tableau import generer_tableau_html
+                with st.container(border=True):
+                    # Déterminer les tours présents
+                    tours_presents = df_tableau['Poule / Tableau'].unique()
+                    ordre_tours = ['Tableau de 64', 'Tableau de 32', 'Tableau de 16', 'Quart de finale', 'Demi finale', 'Finale']
+                    tours_a_afficher = [t for t in ordre_tours if t in tours_presents]
                     
-                    html = generer_tableau_html(df_tableau, tours_a_afficher, st.session_state.escrimeur_principal)
-                    
-                    import streamlit.components.v1 as components
-                    components.html(html, height=1200, scrolling=False)
+                    if len(tours_a_afficher) > 0:
+                        # Utiliser le module tableau.py pour générer le HTML
+                        from tableau import generer_tableau_html
+                        
+                        html = generer_tableau_html(df_tableau, tours_a_afficher, st.session_state.escrimeur_principal)
+                        
+                        import streamlit.components.v1 as components
+                        # Hauteur pour 65 lignes + header
+                        components.html(html, height=1450, scrolling=False)
             
             with col_classement:
-                st.markdown("### Classement Final")
-                if len(df_class_final) > 0:
-                    # Réduire l'interligne avec du CSS
-                    st.markdown("""
-                    <style>
-                    .classement-item {
-                        margin: 2px 0;
-                        line-height: 1.2;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
+                with st.container(border=True):
+                    st.markdown("### Classement Final")
+                    if len(df_class_final) > 0:
+                        # Réduire l'interligne avec du CSS
+                        st.markdown("""
+                        <style>
+                        .classement-item {
+                            margin: 2px 0;
+                            line-height: 1.2;
+                        }
+                        </style>
+                        """, unsafe_allow_html=True)
+                        
+                        for _, row in df_class_final.iterrows():
+                            tireur = row['Tireur']
+                            rang = int(row['Rang'])
+                            # Colorer en rouge si c'est l'escrimeur principal
+                            if tireur == st.session_state.escrimeur_principal:
+                                st.markdown(f"<div class='classement-item'><span style='color:red; font-weight:bold'>{rang}. {tireur}</span></div>", unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"<div class='classement-item'>{rang}. {tireur}</div>", unsafe_allow_html=True)
+                    else:
+                        st.info("Aucun classement disponible")
+        
+        # BLOC : Historique du nombre de tireurs par compétition
+        with st.container(border=True):
+            st.markdown("### Historique du nombre de tireurs par compétition")
+            
+            # Compter les tireurs par compétition et catégorie
+            df_temp = df_class[df_class['Catégorie'].isin(['VH1', 'VH2', 'VH3'])].copy()
+            df_temp['Date'] = pd.to_datetime(df_temp['Date'], format='%d/%m/%y', errors='coerce')
+            
+            # Créer une liste unique de compétitions triées par date (comme dans Historique des résultats)
+            compets_uniques = df_temp.sort_values('Date')[['Date', 'Compétition', 'Saison']].drop_duplicates(subset=['Date', 'Compétition'])
+            
+            if len(compets_uniques) > 0:
+                # Créer les labels identiques à Historique des résultats
+                compets_uniques['Label'] = compets_uniques['Saison'].astype(str) + ' - ' + compets_uniques['Compétition']
+                
+                competitions_data = []
+                
+                for _, row_comp in compets_uniques.iterrows():
+                    saison = row_comp['Saison']
+                    competition = row_comp['Compétition']
+                    label = row_comp['Label']
                     
-                    for _, row in df_class_final.iterrows():
-                        tireur = row['Tireur']
-                        rang = int(row['Rang'])
-                        # Colorer en rouge si c'est l'escrimeur principal
-                        if tireur == st.session_state.escrimeur_principal:
-                            st.markdown(f"<div class='classement-item'><span style='color:red; font-weight:bold'>{rang}. {tireur}</span></div>", unsafe_allow_html=True)
-                        else:
-                            st.markdown(f"<div class='classement-item'>{rang}. {tireur}</div>", unsafe_allow_html=True)
+                    # Compter par catégorie pour cette compétition spécifique
+                    df_comp = df_class[
+                        (df_class['Saison'] == saison) & 
+                        (df_class['Compétition'] == competition)
+                    ]
+                    
+                    nb_vh1 = len(df_comp[df_comp['Catégorie'] == 'VH1']['Tireur'].unique())
+                    nb_vh2 = len(df_comp[df_comp['Catégorie'] == 'VH2']['Tireur'].unique())
+                    nb_vh3 = len(df_comp[df_comp['Catégorie'] == 'VH3']['Tireur'].unique())
+                    total = nb_vh1 + nb_vh2 + nb_vh3
+                    
+                    if total > 0:  # Seulement si au moins un tireur
+                        competitions_data.append({
+                            'Competition': label,
+                            'VH3': nb_vh3,
+                            'VH2': nb_vh2,
+                            'VH1': nb_vh1,
+                            'Total': total
+                        })
+                
+                if len(competitions_data) > 0:
+                    df_histo = pd.DataFrame(competitions_data)
+                    
+                    # Créer l'histogramme empilé
+                    fig_tireurs = go.Figure()
+                    
+                    # Ajouter les barres empilées (VH3 en bas, VH2 au milieu, VH1 en haut)
+                    fig_tireurs.add_trace(go.Bar(
+                        x=df_histo['Competition'],
+                        y=df_histo['VH3'],
+                        name='VH3',
+                        marker_color='#95a5a6',  # Gris
+                        text=df_histo['VH3'],
+                        textposition='inside'
+                    ))
+                    
+                    fig_tireurs.add_trace(go.Bar(
+                        x=df_histo['Competition'],
+                        y=df_histo['VH2'],
+                        name='VH2',
+                        marker_color='#3498db',  # Bleu
+                        text=df_histo['VH2'],
+                        textposition='inside'
+                    ))
+                    
+                    fig_tireurs.add_trace(go.Bar(
+                        x=df_histo['Competition'],
+                        y=df_histo['VH1'],
+                        name='VH1',
+                        marker_color='#2c3e50',  # Bleu foncé
+                        text=df_histo['VH1'],
+                        textposition='inside'
+                    ))
+                    
+                    # Ajouter les totaux au-dessus des barres
+                    fig_tireurs.add_trace(go.Scatter(
+                        x=df_histo['Competition'],
+                        y=df_histo['Total'],
+                        mode='text',
+                        text=df_histo['Total'],
+                        textposition='top center',
+                        textfont=dict(size=12, color='black'),
+                        showlegend=False
+                    ))
+                    
+                    fig_tireurs.update_layout(
+                        barmode='stack',
+                        height=500,
+                        xaxis=dict(
+                            tickangle=-90,  # Texte vertical de bas en haut
+                            tickfont=dict(size=10)
+                        ),
+                        yaxis=dict(
+                            gridcolor='lightgray'
+                        ),
+                        legend=dict(
+                            orientation='h',
+                            yanchor='bottom',
+                            y=1.02,
+                            xanchor='right',
+                            x=1
+                        ),
+                        margin=dict(t=50, b=150, l=50, r=50)
+                    )
+                    
+                    st.plotly_chart(fig_tireurs, use_container_width=True)
                 else:
-                    st.info("Aucun classement disponible")
+                    st.info("Aucune donnée disponible")
+            else:
+                st.info("Aucune donnée disponible")
     else:
         st.info("Veuillez sélectionner une saison, une compétition et une catégorie")
 
@@ -435,25 +551,26 @@ elif st.session_state.page == "matchs":
     tireurs_liste = sorted(set(df['Tireur 1'].unique()) | set(df['Tireur 2'].unique()))
     
     # Filtres en haut
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Utiliser l'escrimeur principal comme défaut
-        escrimeur_defaut = st.session_state.get('escrimeur_principal', 'TURLIER Christophe')
-        if escrimeur_defaut not in tireurs_liste:
-            escrimeur_defaut = tireurs_liste[0]
-        index_defaut = tireurs_liste.index(escrimeur_defaut)
+    with st.container(border=True):
+        col1, col2 = st.columns([2, 1])
         
-        escrimeur = st.selectbox("Sélectionner un escrimeur", tireurs_liste, index=index_defaut)
-    
-    with col2:
-        # Filtre saisons (au lieu d'années)
-        saisons = sorted([s for s in df['Saison'].unique() if s != 2021])  # Exclure 2021
-        saison_min, saison_max = st.select_slider(
-            "Plage de saisons",
-            options=saisons,
-            value=(min(saisons), max(saisons))
-        )
+        with col1:
+            # Utiliser l'escrimeur principal comme défaut
+            escrimeur_defaut = st.session_state.get('escrimeur_principal', 'TURLIER Christophe')
+            if escrimeur_defaut not in tireurs_liste:
+                escrimeur_defaut = tireurs_liste[0]
+            index_defaut = tireurs_liste.index(escrimeur_defaut)
+            
+            escrimeur = st.selectbox("Sélectionner un escrimeur", tireurs_liste, index=index_defaut)
+        
+        with col2:
+            # Filtre saisons (au lieu d'années)
+            saisons = sorted([s for s in df['Saison'].unique() if s != 2021])  # Exclure 2021
+            saison_min, saison_max = st.select_slider(
+                "Plage de saisons",
+                options=saisons,
+                value=(min(saisons), max(saisons))
+            )
     
     # Filtrer les données pour l'escrimeur sélectionné et la plage de saisons
     df_escrimeur = df[
@@ -1062,26 +1179,27 @@ elif st.session_state.page == "resultats":
     tireurs_classements = sorted(df_class['Tireur'].unique())
     
     # Filtres en haut
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Utiliser l'escrimeur principal comme défaut
-        escrimeur_defaut_res = st.session_state.get('escrimeur_principal', 'TURLIER Christophe')
-        if escrimeur_defaut_res not in tireurs_classements:
-            escrimeur_defaut_res = tireurs_classements[0]
-        index_defaut_res = tireurs_classements.index(escrimeur_defaut_res)
+    with st.container(border=True):
+        col1, col2 = st.columns([2, 1])
         
-        escrimeur_res = st.selectbox("Sélectionner un escrimeur", tireurs_classements, index=index_defaut_res, key="escrimeur_resultats")
-    
-    with col2:
-        # Filtre saisons
-        saisons_class = sorted([s for s in df_class['Saison'].unique() if s != 2021])
-        saison_min_res, saison_max_res = st.select_slider(
-            "Plage de saisons",
-            options=saisons_class,
-            value=(min(saisons_class), max(saisons_class)),
-            key="saisons_resultats"
-        )
+        with col1:
+            # Utiliser l'escrimeur principal comme défaut
+            escrimeur_defaut_res = st.session_state.get('escrimeur_principal', 'TURLIER Christophe')
+            if escrimeur_defaut_res not in tireurs_classements:
+                escrimeur_defaut_res = tireurs_classements[0]
+            index_defaut_res = tireurs_classements.index(escrimeur_defaut_res)
+            
+            escrimeur_res = st.selectbox("Sélectionner un escrimeur", tireurs_classements, index=index_defaut_res, key="escrimeur_resultats")
+        
+        with col2:
+            # Filtre saisons
+            saisons_class = sorted([s for s in df_class['Saison'].unique() if s != 2021])
+            saison_min_res, saison_max_res = st.select_slider(
+                "Plage de saisons",
+                options=saisons_class,
+                value=(min(saisons_class), max(saisons_class)),
+                key="saisons_resultats"
+            )
     
     # Filtrer les données pour l'escrimeur et les saisons
     df_class_filtre = df_class[
@@ -1103,8 +1221,6 @@ elif st.session_state.page == "resultats":
     tableau_32 = len(df_class_filtre[df_class_filtre['Rang'] > 16])
     
     # Afficher le résumé
-    st.markdown("---")
-    
     col_gauche, col_droite = st.columns(2)
     
     with col_gauche:
@@ -1513,34 +1629,36 @@ elif st.session_state.page == "versus":
         
         # BLOC 2 : Statistiques détaillées (gauche)
         with col_stats_gauche:
-            with st.container(border=True):
+            with st.container(border=True, height=320):  # HAUTEUR FIXE EN PIXELS
                 st.markdown("### Statistiques détaillées")
-                st.markdown("")
                 
                 matchs_10_touches = len(df_tableaux_vs)
                 
-                st.markdown(f"<p style='font-size:16px;'><b>{total_confrontations} confrontations, dont {matchs_10_touches} matchs en 10 touches</b></p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:{couleur_esc1}; font-size:16px;'><b>{pct_poules_esc1:.1f}% de victoires en poules pour {escrimeur1}</b></p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:{couleur_esc1}; font-size:16px;'><b>{pct_tableaux_esc1:.1f}% de victoires en tableau pour {escrimeur1}</b></p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:{couleur_esc1}; font-size:16px;'><b>{touches_esc1} touches marquées par {escrimeur1}</b></p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:{couleur_esc2}; font-size:16px;'><b>{touches_esc2} touches marquées par {escrimeur2}</b></p>", unsafe_allow_html=True)
-                
-                # Afficher les scores moyens avec gestion du "-"
+                # Construire le HTML des scores moyens
+                score_moy_html = ""
                 if len(df_gagne_esc1) > 0:
-                    st.markdown(f"<p style='color:{couleur_esc1}; font-size:16px;'><b>Score moyen quand {escrimeur1} gagne : 10 - {score_moy_perdant_esc2:.1f}</b></p>", unsafe_allow_html=True)
+                    score_moy_html += f"<p style='color:{couleur_esc1}; font-size:16px; margin:8px 0;'><b>Score moyen quand {escrimeur1} gagne : 10 - {score_moy_perdant_esc2:.1f}</b></p>"
                 else:
-                    st.markdown(f"<p style='color:{couleur_esc1}; font-size:16px;'><b>Score moyen quand {escrimeur1} gagne : -</b></p>", unsafe_allow_html=True)
+                    score_moy_html += f"<p style='color:{couleur_esc1}; font-size:16px; margin:8px 0;'><b>Score moyen quand {escrimeur1} gagne : -</b></p>"
                 
                 if len(df_gagne_esc2) > 0:
-                    st.markdown(f"<p style='color:{couleur_esc2}; font-size:16px;'><b>Score moyen quand {escrimeur2} gagne : 10 - {score_moy_perdant_esc1:.1f}</b></p>", unsafe_allow_html=True)
+                    score_moy_html += f"<p style='color:{couleur_esc2}; font-size:16px; margin:8px 0;'><b>Score moyen quand {escrimeur2} gagne : 10 - {score_moy_perdant_esc1:.1f}</b></p>"
                 else:
-                    st.markdown(f"<p style='color:{couleur_esc2}; font-size:16px;'><b>Score moyen quand {escrimeur2} gagne : -</b></p>", unsafe_allow_html=True)
+                    score_moy_html += f"<p style='color:{couleur_esc2}; font-size:16px; margin:8px 0;'><b>Score moyen quand {escrimeur2} gagne : -</b></p>"
+                
+                st.markdown(f"""
+                <p style='font-size:16px; margin:8px 0;'><b>{total_confrontations} confrontations, dont {matchs_10_touches} matchs en 10 touches</b></p>
+                <p style='color:{couleur_esc1}; font-size:16px; margin:8px 0;'><b>{pct_poules_esc1:.1f}% de victoires en poules pour {escrimeur1}</b></p>
+                <p style='color:{couleur_esc1}; font-size:16px; margin:8px 0;'><b>{pct_tableaux_esc1:.1f}% de victoires en tableau pour {escrimeur1}</b></p>
+                <p style='color:{couleur_esc1}; font-size:16px; margin:8px 0;'><b>{touches_esc1} touches marquées par {escrimeur1}</b></p>
+                <p style='color:{couleur_esc2}; font-size:16px; margin:8px 0;'><b>{touches_esc2} touches marquées par {escrimeur2}</b></p>
+                {score_moy_html}
+                """, unsafe_allow_html=True)
         
         # BLOC 3 : Camemberts côte à côte (droite)
         with col_camemberts_droite:
-            with st.container(border=True):
+            with st.container(border=True, height=320):  # HAUTEUR FIXE EN PIXELS
                 st.markdown("### Matchs")
-                st.markdown("")
                 
                 col_cam1, col_cam2 = st.columns(2)
                 
@@ -1660,21 +1778,24 @@ elif st.session_state.page == "versus":
             with st.container(border=True):
                 st.subheader("Résultats des confrontations")
                 
-                # Créer l'histogramme horizontal
-                df_histo = df_versus.sort_values('Date').copy()
+                # Créer l'histogramme horizontal (plus récent en haut)
+                df_histo = df_versus.sort_values('Date', ascending=False).copy()
                 
                 touches_esc1_list = []
                 touches_esc2_list = []
                 
+                # Vérifier attentivement les données pour chaque match
                 for _, row in df_histo.iterrows():
                     if row['Tireur 1'] == escrimeur1:
+                        # Escrimeur1 est Tireur 1 - on prend directement
                         touches_esc1_list.append(row['Touches Tireur 1'])
                         touches_esc2_list.append(row['Touches Tireur 2'])
                     else:
+                        # Escrimeur1 est Tireur 2 - on inverse
                         touches_esc1_list.append(row['Touches Tireur 2'])
                         touches_esc2_list.append(row['Touches Tireur 1'])
                 
-                # Créer le graphique (jaune pour esc1 à gauche, orange pour esc2 à droite)
+                # Créer le graphique avec axe X en haut et ordre inversé sur Y
                 fig_touches = go.Figure()
                 
                 # Barres de gauche (escrimeur 1) - valeurs négatives pour aller à gauche
@@ -1686,7 +1807,7 @@ elif st.session_state.page == "versus":
                     marker_color='#3498db',  # Bleu
                     text=touches_esc1_list,
                     textposition='inside',
-                    textfont=dict(size=14),  # Agrandi
+                    textfont=dict(size=14),
                     hoverinfo='text',
                     hovertext=[f"{escrimeur1}: {t}" for t in touches_esc1_list]
                 ))
@@ -1700,7 +1821,7 @@ elif st.session_state.page == "versus":
                     marker_color='#e74c3c',  # Rouge
                     text=touches_esc2_list,
                     textposition='inside',
-                    textfont=dict(size=14),  # Agrandi
+                    textfont=dict(size=14),
                     hoverinfo='text',
                     hovertext=[f"{escrimeur2}: {t}" for t in touches_esc2_list]
                 ))
@@ -1714,31 +1835,32 @@ elif st.session_state.page == "versus":
                         showticklabels=False,
                         zeroline=True,
                         zerolinecolor='black',
-                        zerolinewidth=2
+                        zerolinewidth=2,
+                        side='top'  # Axe X en haut
                     ),
                     yaxis=dict(
                         showticklabels=False,
-                        autorange='reversed'
+                        autorange='reversed'  # Inverser l'ordre pour avoir le plus récent en haut
                     ),
-                    margin=dict(t=40, b=20, l=20, r=20),
+                    margin=dict(t=60, b=20, l=20, r=20),
                     annotations=[
                         dict(
                             text=f"<b>{escrimeur1}</b>",
                             x=-10,
-                            y=-1,
+                            y=-1.5,
                             xref='x',
                             yref='y',
                             showarrow=False,
-                            font=dict(size=20, color='#3498db')  # Agrandi et gras
+                            font=dict(size=20, color='#3498db')
                         ),
                         dict(
                             text=f"<b>{escrimeur2}</b>",
                             x=10,
-                            y=-1,
+                            y=-1.5,
                             xref='x',
                             yref='y',
                             showarrow=False,
-                            font=dict(size=20, color='#e74c3c')  # Agrandi et gras
+                            font=dict(size=20, color='#e74c3c')
                         )
                     ]
                 )
