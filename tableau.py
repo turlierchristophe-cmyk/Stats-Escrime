@@ -145,8 +145,9 @@ def generer_tableau_html(df_tableau, tours_a_afficher, escrimeur_principal=None)
     ]
     
     h = '''<!DOCTYPE html><html><head><style>
-body{font-family:Arial;margin:0;padding:10px;font-size:11px}
-table{border-collapse:collapse}
+body{font-family:Arial;margin:0;padding:0;font-size:11px}
+.table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px}
+table{border-collapse:collapse;min-width:100%}
 td{padding:3px 6px;min-width:100px;height:14px}
 th{background-color:#f0f0f0;padding:8px;text-align:center;font-weight:bold;border:1px solid #ddd;font-size:12px}
 .blue{background-color:#3498db;color:white}
@@ -156,7 +157,7 @@ th{background-color:#f0f0f0;padding:8px;text-align:center;font-weight:bold;borde
 .highlight{background-color:#ff0000;color:white}
 .center{text-align:center}
 .br{border-right:2px solid #000}
-</style></head><body><table>'''
+</style></head><body><div class="table-wrapper"><table>'''
     
     h += '<tr>'
     for t in ['Tableau de 32', 'Tableau de 16', 'Quart de finale', 'Demi finale', 'Finale', 'Vainqueur']:
@@ -215,5 +216,5 @@ th{background-color:#f0f0f0;padding:8px;text-align:center;font-weight:bold;borde
         
         h += '</tr>'
     
-    h += '</table></body></html>'
+    h += '</table></div></body></html>'
     return h
