@@ -146,7 +146,7 @@ def generer_tableau_html(df_tableau, tours_a_afficher, escrimeur_principal=None)
     
     h = '''<!DOCTYPE html><html><head><style>
 body{font-family:Arial;margin:0;padding:0;font-size:11px}
-.table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px}
+.table-wrapper{overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px}
 table{border-collapse:collapse;min-width:100%}
 td{padding:3px 6px;min-width:100px;height:14px}
 th{background-color:#f0f0f0;padding:8px;text-align:center;font-weight:bold;border:1px solid #ddd;font-size:12px}
